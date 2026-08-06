@@ -1,0 +1,32 @@
+name = "otp-bridge-relay"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Pairing map only: pairingId -> push subscription.
+# Codes are never written here, or anywhere else.
+[[kv_namespaces]]
+binding = "PAIRINGS"
+id = "PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE"
+
+[vars]
+VAPID_SUBJECT = "mailto:ikuria@ucsc.edu"
+# Replaced at deploy time with the real iCloud share link once the shortcut is published.
+SHORTCUT_URL = "https://www.icloud.com/shortcuts/PLACEHOLDER"
+
+# VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are secrets:
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+#   npx wrangler secret put VAPID_PUBLIC_KEY
+
+# Abuse protection without burning KV writes.
+[[unsafe.bindings]]
+name = "CODE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[[unsafe.bindings]]
+name = "PAIR_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }

@@ -1,0 +1,125 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1c1c1e;
+  --bg: #fff;
+  --muted: #6e6e73;
+  --line: #e3e3e6;
+  --accent: #0071e3;
+  --warn: #d1730a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f5f5f7;
+    --bg: #1c1c1e;
+    --muted: #98989d;
+    --line: #38383a;
+    --accent: #0a84ff;
+    --warn: #ffd60a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto 12px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+}
+
+.pair {
+  display: block;
+  font: 600 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  text-align: center;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+
+button {
+  display: block;
+  width: 100%;
+  font: 600 13px/1 system-ui, sans-serif;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 9px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+button + button {
+  margin-top: 8px;
+}
+
+.error {
+  color: var(--warn);
+  font-size: 12.5px;
+  border: 1px solid var(--warn);
+  border-radius: 9px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.code-card {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.code-card .code {
+  flex: 1;
+  font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+}
+
+.code-card button {
+  width: auto;
+  padding: 7px 12px;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 14px 0;
+}
