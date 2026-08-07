@@ -321,6 +321,37 @@ Not pass/fail — this becomes the test fixture corpus, and it tells us empirica
 the silent-fill path will actually trigger. If only one site in ten sends domain-bound codes,
 that feature is largely aspirational in v1 and we should know before building it.
 
+## 12a. Findings from the deployed relay
+
+Recorded 2026-08-06, against `otp-bridge-relay.ivankuria7.workers.dev`.
+
+**The full push path works, and it is fast.** A code posted to `/code` reaches a real
+browser and fills the field in **563ms**, measured through the real FCM push service with
+the extension loaded in Chromium. That answers the core of Spike 2: an MV3 service worker
+does wake on a genuine push, and the RFC 8291 payload decrypts. What remains unanswered is
+whether Chrome eventually surfaces its own "updated in the background" notice under
+`userVisibleOnly` — that is an OS-level notification and invisible to automation.
+
+**Chrome does not always issue `fcm.googleapis.com` push endpoints.** A real subscription
+came back on `jmt17.google.com/fcm/send/...`. The original exact-match allowlist rejected
+it, so pairing failed with a bare 400 and the popup sat on "Setting up…" forever. Host
+matching is now suffix-based across Google's push hosts, and the extension surfaces the
+relay's error reason rather than just the status code. **An exact-match allowlist of push
+endpoints is wrong** — this would have broken pairing for a large share of real users while
+passing every hermetic test.
+
+**Rate limiting works but is approximate.** The `unsafe` ratelimit binding does bind and
+does return `success: false`, but the counter is eventually consistent per-colo: a first
+burst of 40 parallel requests past a limit of 20/60s all succeeded, and the following burst
+was correctly rejected. Treat it as abuse damping, not as an exact quota. `/health` reports
+whether each limiter actually bound, because a limiter that silently no-ops is worse than
+none — you would believe you had one.
+
+**Fresh `workers.dev` deployments take minutes to propagate.** Immediately after a deploy,
+requests intermittently return Cloudflare edge errors 1042/1104, and newly deployed versions
+serve alongside the previous one for several minutes. Do not smoke-test a deploy
+immediately and conclude the code is broken; poll until responses are consistent.
+
 ## 13. Known accepted risks
 
 1. **Locked-phone reliability is the project's biggest unknown** (Spike 1). Users report

@@ -10,7 +10,8 @@
     "postinstall": "wxt prepare",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:e2e": "wxt build && playwright test"
+    "test:e2e": "wxt build && playwright test",
+    "test:live": "wxt build && playwright test --config=playwright.live.config.ts"
   },
   "dependencies": {
     "@otp-bridge/shared": "workspace:*",

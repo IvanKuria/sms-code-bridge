@@ -232,7 +232,16 @@ export default defineBackground(() => {
       });
 
       if (!res.ok) {
-        await chrome.storage.local.set({ lastError: `Relay refused pairing (${res.status}).` });
+        // Surface the relay's reason, not just the status. A bad_subscription here means
+        // the browser handed us a push endpoint the relay does not allowlist, and without
+        // the reason that presents as "Setting up…" forever with nothing to go on.
+        const reason = await res
+          .json()
+          .then((body: unknown) => (body as { error?: string })?.error ?? "")
+          .catch(() => "");
+        await chrome.storage.local.set({
+          lastError: `Relay refused pairing (${res.status}${reason ? `: ${reason}` : ""}).`,
+        });
         return;
       }
 

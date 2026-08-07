@@ -12,16 +12,34 @@ const PAIRING_ID = /^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){5}$/;
 /**
  * Push endpoints we are willing to POST to.
  *
- * The Worker fetches whatever endpoint a client registers, so an unvalidated value here
- * is a server-side request forgery primitive. Pin it to the real push services.
+ * The Worker fetches whatever endpoint a client registers. Left unvalidated that turns
+ * this endpoint into a request-amplification primitive: register a victim URL, then post
+ * codes to make our Worker hammer it. The allowlist is the control, and rate limiting is
+ * the backstop.
+ *
+ * Chrome does NOT always hand out `fcm.googleapis.com`. Observed in the wild:
+ * `jmt17.google.com/fcm/send/...`. Chrome distributes push endpoints across several
+ * Google hosts, so host-suffix matching is required — an exact-match list silently
+ * rejects valid subscriptions and pairing fails with no obvious cause.
+ *
+ * Suffix matching across `google.com` is broad, but every host under it is Google
+ * infrastructure, and Workers cannot reach private address space regardless. The
+ * amplification risk is what matters here, and that is bounded by the rate limiter.
  */
 const ALLOWED_PUSH_HOSTS = [
   "fcm.googleapis.com",
+  "android.googleapis.com",
   "updates.push.services.mozilla.com",
   "web.push.apple.com",
 ] as const;
 
-const ALLOWED_PUSH_SUFFIXES = [".notify.windows.com", ".push.apple.com"] as const;
+const ALLOWED_PUSH_SUFFIXES = [
+  ".googleapis.com",
+  ".google.com",
+  ".push.services.mozilla.com",
+  ".notify.windows.com",
+  ".push.apple.com",
+] as const;
 
 export function normalizePairingId(raw: unknown): string | null {
   if (typeof raw !== "string") return null;

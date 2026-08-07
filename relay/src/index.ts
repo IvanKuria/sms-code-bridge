@@ -28,7 +28,21 @@ const CODE_TTL_SECONDS = 60;
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/health", (c) => c.json({ ok: true }));
+/**
+ * Reports which optional bindings actually materialised at runtime. The rate limiters are
+ * declared as `unsafe` bindings, which are experimental and can silently fail to bind —
+ * and a rate limiter that quietly does nothing on a bearer-token endpoint is worse than
+ * no rate limiter, because you believe you have one. Names only, never values.
+ */
+app.get("/health", (c) =>
+  c.json({
+    ok: true,
+    limiters: {
+      code: typeof c.env.CODE_LIMITER?.limit === "function",
+      pair: typeof c.env.PAIR_LIMITER?.limit === "function",
+    },
+  }),
+);
 
 /**
  * Mobile onboarding. The pairing code arrives in the query string because the QR the

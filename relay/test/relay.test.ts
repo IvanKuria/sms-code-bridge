@@ -45,10 +45,16 @@ async function pair(id = PAIRING_ID) {
 }
 
 describe("GET /health", () => {
-  it("responds ok", async () => {
+  it("responds ok and reports which limiters are bound", async () => {
     const res = await SELF.fetch("https://relay.test/health");
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ ok: true });
+    // The test pool does not provide the experimental rate-limit bindings, so this
+    // doubles as a check that a missing limiter is reported honestly rather than
+    // assumed present.
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      limiters: { code: false, pair: false },
+    });
   });
 });
 
@@ -72,6 +78,32 @@ describe("POST /pair", () => {
     const res = await post("/pair", { pairingId: "nope", subscription: SUBSCRIPTION });
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({ error: "bad_pairing_id" });
+  });
+
+  // Chrome does not always issue fcm.googleapis.com. This exact host was observed from a
+  // real Chromium subscription and an exact-match allowlist rejected it, breaking pairing
+  // with no diagnosable cause.
+  it.each([
+    "https://jmt17.google.com/fcm/send/abc123",
+    "https://fcm.googleapis.com/fcm/send/abc123",
+    "https://android.googleapis.com/gcm/send/abc123",
+    "https://updates.push.services.mozilla.com/wpush/v2/abc123",
+    "https://xyz.notify.windows.com/w/?token=abc",
+    "https://web.push.apple.com/abc123",
+  ])("accepts the real push endpoint %s", async (endpoint) => {
+    const res = await post("/pair", {
+      pairingId: PAIRING_ID,
+      subscription: { ...SUBSCRIPTION, endpoint },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a lookalike host that merely contains a push domain", async () => {
+    const res = await post("/pair", {
+      pairingId: PAIRING_ID,
+      subscription: { ...SUBSCRIPTION, endpoint: "https://google.com.evil.net/fcm/send/x" },
+    });
+    expect(res.status).toBe(400);
   });
 
   it("rejects a push endpoint on an unknown host", async () => {
