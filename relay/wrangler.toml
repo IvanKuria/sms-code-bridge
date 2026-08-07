@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # Codes are never written here, or anywhere else.
 [[kv_namespaces]]
 binding = "PAIRINGS"
-id = "PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE"
+id = "36d66fbcf869486983e1c0a49d300003"
 
 [vars]
 VAPID_SUBJECT = "mailto:ikuria@ucsc.edu"
