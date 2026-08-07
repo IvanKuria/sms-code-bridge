@@ -245,11 +245,15 @@ shortcut/     .shortcut source + build notes
 docs/         this
 ```
 
-pnpm workspaces. Node 26, pnpm 10.
+pnpm workspaces. Node >=22, pnpm 10.
 
-**Extension:** TypeScript, WXT, React + Tailwind for the popup. The pill's styles are
-hand-written CSS injected into the closed shadow root — Tailwind cannot reach inside it.
-`qrcode` for the pairing QR.
+**Extension:** TypeScript, WXT, React for the popup with plain CSS. The pill's styles are
+hand-written and injected into its closed shadow root — no stylesheet from outside can
+reach in, which is the point. `qrcode` for the pairing QR.
+
+`host_permissions` is derived from `WXT_RELAY_URL` at build time so the extension can reach
+exactly one origin. A wildcard like `https://*.workers.dev/*` would grant access to every
+Worker on the internet.
 
 **Relay:** TypeScript, Cloudflare Workers, Hono, Workers KV (pairing map only),
 `@block65/webcrypto-web-push`, Wrangler.

@@ -272,7 +272,7 @@ finds out.
 | Result | Decision |
 |---|---|
 | **No forced notification** | The pill is the primary UX as designed (DESIGN §5, §8). |
-| **Forced** | Soft failure. Lean in: make the notification itself the affordance, which is what macOS does. Costs elegance, not the product. The notification must not contain the code — the code enters the page only on explicit user action. |
+| **Forced** | Soft failure. Lean in: make the notification itself the affordance, which is what macOS does. Costs elegance, not the product. The notification may carry the code: an OS notification is not readable by page scripts, and macOS does exactly this. The closed-shadow-root rule is about keeping the code away from *page JS*, which is a different threat. The residual risk is shoulder-surfing and screen sharing, which is the same risk the phone's own SMS banner already carries. |
 
 ### Outcome
 

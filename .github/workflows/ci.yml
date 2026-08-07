@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Unit and integration tests
+        run: pnpm -r test
+
+      # The E2E suite drives a real Chromium with the extension loaded. It is the only
+      # thing that catches content-script bugs that unit tests cannot see — the pill's
+      # MutationObserver feedback loop was found here, not in jsdom.
+      - name: Install Playwright browsers
+        run: pnpm --filter @otp-bridge/extension exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm --filter @otp-bridge/extension test:e2e
+        env:
+          CI: "true"

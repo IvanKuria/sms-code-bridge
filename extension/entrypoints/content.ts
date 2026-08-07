@@ -26,8 +26,18 @@ export default defineContentScript({
 
     // A field can appear after the code arrives — the user is often still on the
     // password step when the SMS lands.
+    //
+    // findOtpField walks every element in the document plus every open shadow root, so
+    // it must never run per-mutation: a busy page fires these hundreds of times a
+    // second. Coalesce to one scan per frame, and only while a code is actually pending.
+    let scanQueued = false;
     const observer = new MutationObserver(() => {
-      if (pending) tryDeliver();
+      if (!pending || scanQueued) return;
+      scanQueued = true;
+      requestAnimationFrame(() => {
+        scanQueued = false;
+        if (pending) tryDeliver();
+      });
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
@@ -47,36 +57,46 @@ export default defineContentScript({
       return false;
     });
 
+    function clearPending(): void {
+      pending = null;
+      const current = pill;
+      pill = null;
+      current?.destroy();
+    }
+
     function tryDeliver(): boolean {
       if (!pending) return false;
       if (Date.now() > pending.until) {
-        pending = null;
-        pill?.destroy();
-        pill = null;
+        clearPending();
         return false;
       }
 
       const field = findOtpField(document);
+      // Nothing to fill yet. Keep the code pending so the observer can catch a field
+      // that appears a moment later — a very common race on multi-step login flows.
       if (!field) return false;
 
       const { payload } = pending;
       const verdict = judge(payload);
 
-      if (verdict === "trusted") {
-        if (fillOtpField(field, payload.code)) {
-          pending = null;
-          pill?.destroy();
-          pill = null;
-          return true;
-        }
-        // The write did not stick — a React-controlled input rejecting it, most likely.
-        // Fall through and offer it manually rather than pretending we succeeded.
+      if (verdict === "trusted" && fillOtpField(field, payload.code)) {
+        clearPending();
+        return true;
       }
+      // Either the code is unverified, or the write did not stick (a React-controlled
+      // input rejecting it). Offer it manually rather than pretending we succeeded.
 
-      pill?.destroy();
+      // Clear `pending` BEFORE showing the pill. Appending the pill mutates the DOM,
+      // which retriggers our own MutationObserver — and with a code still pending that
+      // is an infinite loop that hangs the page. Once the code has been offered we are
+      // done scanning regardless.
+      pending = null;
+
+      const previous = pill;
+      pill = null;
+      previous?.destroy();
+
       pill = showPill(payload, verdict, field, () => {
-        pending = null;
-        pill?.destroy();
         pill = null;
       });
       return true;

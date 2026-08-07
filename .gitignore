@@ -4,6 +4,8 @@ dist/
 .wxt/
 .wrangler/
 coverage/
+test-results/
+playwright-report/
 *.log
 .DS_Store
 .dev.vars

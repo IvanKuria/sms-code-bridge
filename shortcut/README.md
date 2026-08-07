@@ -208,9 +208,10 @@ codes, the silent-fill path is aspirational anyway (DESIGN §12, Spike 3). If th
 otherwise, add the sigil variant then, and measure the reliability cost against Spike 1's
 baseline before shipping it.
 
-**Retry, logging, dedupe.** None. Dedupe is the relay's job (DESIGN §8) — note that as of
-this writing `relay/src/index.ts` has no dedupe implementation, so duplicate automations
-currently produce duplicate pushes.
+**Retry, logging, dedupe.** None in the shortcut. Dedupe lives in the extension's service
+worker (`recentCodes`, 30s window) rather than the relay, so that the relay stays stateless
+and never spends a KV write on a code. Duplicate automations still produce duplicate pushes
+over the wire; the extension drops the second before it reaches a page.
 
 ---
 
@@ -292,8 +293,9 @@ implemented yet, so today duplicates reach the browser as two pushes.
 The automation is untouched — it points at the shortcut, not at the ID. Nothing else in the
 shortcut changes. That is the whole reason action 1 stands alone.
 
-One caveat for whoever implements rotation: the old ID's KV entry survives for a year
-(`PAIRING_TTL_SECONDS`), and if the extension re-registers the *same* push subscription under
-the new ID, the leaked ID still reaches the same browser. Rotation must therefore either
-delete the old pairing server-side or unsubscribe and resubscribe in the browser. Neither
-exists yet; the relay has no delete endpoint.
+Rotation genuinely revokes. The old ID's KV entry would otherwise survive a year
+(`PAIRING_TTL_SECONDS`) and keep reaching this browser, which would make rotating a leaked
+code purely cosmetic. So `rotatePairing` in `extension/entrypoints/background.ts` calls
+`DELETE /pair` on the old ID before minting a new one, and the relay drops the entry
+(`relay/src/index.ts`). If that call fails, the popup says so rather than implying the old
+code is dead.
