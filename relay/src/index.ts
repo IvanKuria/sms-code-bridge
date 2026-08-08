@@ -5,6 +5,7 @@ import { Hono, type Context } from "hono";
 import { normalizePairingId, pairingKey, parseSubscription } from "./pairing.js";
 import { setupPage } from "./setup-page.js";
 import { SHORTCUT_BASE64 } from "./shortcut-asset.js";
+import { testPage } from "./test-page.js";
 
 /** A rate limiter binding, present in production and absent in some test setups. */
 interface RateLimiter {
@@ -86,6 +87,12 @@ app.post("/pair", async (c) => {
  * Worker, so every user gets the same signed file and supplies their code through the
  * shortcut's import question.
  */
+/**
+ * Self-serve end-to-end test: send yourself a code and watch it fill, no phone needed.
+ * Also how a Web Store reviewer without an iPhone can exercise the extension.
+ */
+app.get("/test", (c) => c.html(testPage(normalizePairingId(c.req.query("p")))));
+
 app.get("/sms-code-bridge.shortcut", serveShortcut);
 /** Legacy path, kept so an already-imported setup page does not break. */
 app.get("/shortcut", serveShortcut);

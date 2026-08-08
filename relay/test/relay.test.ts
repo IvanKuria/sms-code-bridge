@@ -140,6 +140,29 @@ describe("POST /pair", () => {
   });
 });
 
+describe("GET /test", () => {
+  it("renders the test harness and prefills a valid pairing code", async () => {
+    const res = await SELF.fetch(`https://relay.test/test?p=${PAIRING_ID}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(PAIRING_ID);
+    expect(html).toContain('autocomplete="one-time-code"');
+    expect(html).toContain('maxlength="1"');
+  });
+
+  it("renders without a pairing code rather than erroring", async () => {
+    const res = await SELF.fetch("https://relay.test/test");
+    expect(res.status).toBe(200);
+  });
+
+  it("does not reflect a malformed pairing code into the page", async () => {
+    const res = await SELF.fetch("https://relay.test/test?p=%3Cscript%3Ealert(1)%3C/script%3E");
+    expect(res.status).toBe(200);
+    // normalizePairingId rejects it outright, so it never reaches the HTML.
+    expect(await res.text()).not.toContain("<script>alert");
+  });
+});
+
 describe("GET /shortcut", () => {
   // The path must end in .shortcut: the Shortcuts app appears to validate by extension
   // and rejects a bare /shortcut path with "the shortcut URL provided was invalid".
