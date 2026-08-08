@@ -275,16 +275,16 @@ describe("GET /setup", () => {
     expect(html).toContain('href="https://relay.test/sms-code-bridge.shortcut"');
   });
 
-  it("points the Add Shortcut button at the shortcuts:// import scheme", async () => {
+  it("links directly to the file and never uses the shortcuts:// scheme", async () => {
     const res = await SELF.fetch(`https://relay.test/setup?p=${PAIRING_ID}`);
     const html = await res.text();
-    // Handing the file to the Shortcuts app directly is more reliable than depending on
-    // Safari's download handling, which varies by iOS version.
-    expect(html).toContain("shortcuts://import-shortcut?url=");
-    // Literal, NOT percent-encoded: Shortcuts reads the url parameter as-is, so an
-    // encoded https%3A%2F%2F... is not a URL as far as it is concerned.
-    expect(html).toContain("url=https://relay.test/sms-code-bridge.shortcut");
-    expect(html).not.toContain("url=https%3A");
+
+    expect(html).toContain('href="https://relay.test/sms-code-bridge.shortcut"');
+
+    // shortcuts://import-shortcut only accepts iCloud share links. Given a self-hosted
+    // https URL it fails with "The shortcut URL provided was invalid" without ever
+    // fetching the file — reproduced on macOS with both encoded and unencoded forms.
+    expect(html).not.toContain("shortcuts://");
   });
 
   it("rejects a missing pairing code", async () => {

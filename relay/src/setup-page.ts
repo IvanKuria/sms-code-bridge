@@ -6,17 +6,17 @@
 export function setupPage(pairingId: string, origin: string): string {
   const id = escapeHtml(pairingId);
 
-  // The shortcuts:// scheme hands the file straight to the Shortcuts app.
+  // A plain link to the file — NOT `shortcuts://import-shortcut?url=...`.
   //
-  // Two things it is fussy about, both learned the hard way:
-  //  - The path must end in `.shortcut`. Shortcuts appears to validate by extension, and
-  //    a bare `/shortcut` path is rejected as "the shortcut URL provided was invalid".
-  //  - The `url` parameter must NOT be percent-encoded. Shortcuts reads it literally, so
-  //    an encoded `https%3A%2F%2F...` is not a URL as far as it is concerned. Colons and
-  //    slashes are legal in a query value anyway.
-  const file = `${origin}/sms-code-bridge.shortcut`;
-  const url = escapeHtml(`shortcuts://import-shortcut?url=${file}&name=SMS%20Code%20Bridge`);
-  const fallback = escapeHtml(file);
+  // That scheme only accepts iCloud share links. Point it at any self-hosted https URL
+  // and Shortcuts rejects it outright with "The shortcut URL provided was invalid",
+  // before it ever fetches the file. Verified by reproducing the dialog on macOS with
+  // both encoded and unencoded forms of the parameter, and confirming the very same
+  // file imports cleanly when opened directly.
+  //
+  // Downloading the file and opening it works, and is the only self-hosted path that
+  // does.
+  const url = escapeHtml(`${origin}/sms-code-bridge.shortcut`);
 
   return `<!doctype html>
 <html lang="en">
@@ -70,10 +70,15 @@ export function setupPage(pairingId: string, origin: string): string {
     </li>
 
     <li>
-      <h2>Add the Shortcut</h2>
-      <a class="btn" href="${url}">Add Shortcut</a>
-      <p class="hint">It will ask for your pairing code — paste what you just copied.
-      If nothing happens, <a href="${fallback}">download it directly</a>.</p>
+      <h2>Download the Shortcut</h2>
+      <a class="btn" href="${url}">Download Shortcut</a>
+      <ol class="steps">
+        <li>Safari downloads the file — tap the <strong>download icon</strong> in the
+        address bar</li>
+        <li>Tap <strong>sms-code-bridge.shortcut</strong> to open it in Shortcuts</li>
+        <li>It asks for your pairing code — <strong>paste</strong> what you just copied</li>
+        <li>Tap <strong>Add Shortcut</strong></li>
+      </ol>
     </li>
 
     <li>
