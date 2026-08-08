@@ -1,6 +1,6 @@
 import { buildPushPayload, type PushSubscription } from "@block65/webcrypto-web-push";
 import { extractOtp } from "@otp-bridge/shared";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import { normalizePairingId, pairingKey, parseSubscription } from "./pairing.js";
 import { setupPage } from "./setup-page.js";
@@ -86,12 +86,13 @@ app.post("/pair", async (c) => {
  * Worker, so every user gets the same signed file and supplies their code through the
  * shortcut's import question.
  */
-app.get("/shortcut", (c) => {
+app.get("/sms-code-bridge.shortcut", serveShortcut);
+/** Legacy path, kept so an already-imported setup page does not break. */
+app.get("/shortcut", serveShortcut);
+
+function serveShortcut(c: Context<{ Bindings: Env }>) {
   if (!SHORTCUT_BASE64) {
-    return c.text(
-      "The Shortcut has not been built yet. See shortcut/build-shortcut.mjs.",
-      503,
-    );
+    return c.text("The Shortcut has not been built yet. See shortcut/build-shortcut.mjs.", 503);
   }
 
   const binary = atob(SHORTCUT_BASE64);
@@ -100,11 +101,11 @@ app.get("/shortcut", (c) => {
 
   return c.body(bytes.buffer as ArrayBuffer, 200, {
     "content-type": "application/octet-stream",
-    "content-disposition": 'attachment; filename="SMS Code Bridge.shortcut"',
+    "content-disposition": 'attachment; filename="sms-code-bridge.shortcut"',
     // The file is identical for everyone and changes only on redeploy.
     "cache-control": "public, max-age=3600",
   });
-});
+}
 
 /**
  * Revokes a pairing. Without this, rotating a leaked pairing ID would be cosmetic: the

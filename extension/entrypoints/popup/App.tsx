@@ -93,6 +93,14 @@ export function App() {
             Rotate pairing code
           </button>
         </>
+      ) : status.pushUnavailable ? (
+        // Pointing at the relay here would send people debugging a network problem that
+        // does not exist. Nothing about this is fixable from our side.
+        <p className="muted">
+          Nothing to set up — this browser cannot receive pushed codes at all.
+        </p>
+      ) : status.lastError ? (
+        <p className="muted">Setup could not complete. See the message above.</p>
       ) : (
         <p className="muted">
           Setting up… if this does not clear, the relay may be unreachable.

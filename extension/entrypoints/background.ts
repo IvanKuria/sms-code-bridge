@@ -247,18 +247,34 @@ export default defineBackground(() => {
 
       await chrome.storage.local.set({ pairingId, lastError: null });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+
+      // De-googled Chromium forks (ungoogled-chromium, Helium, and friends) remove FCM,
+      // and Chrome's Push API *is* FCM — so subscribe() can never succeed there. The raw
+      // message ("Registration failed - push service error") sends people hunting for a
+      // network problem that does not exist.
+      const noPushService = /push service|registration failed/i.test(message);
+
       await chrome.storage.local.set({
-        lastError: err instanceof Error ? err.message : "Could not reach the relay.",
+        lastError: noPushService
+          ? "This browser has no push service, so codes cannot be delivered. " +
+            "Browsers built on ungoogled-chromium (Helium, Thorium and similar) remove " +
+            "Google's FCM, which the Push API depends on. Use Chrome, Edge, Brave or " +
+            "Vivaldi."
+          : message || "Could not reach the relay.",
+        pushUnavailable: noPushService,
       });
     }
   }
 
   async function buildStatus(): Promise<Status & { pendingCode: CodePayload | null }> {
-    const { pairingId, lastError, lastCodeAt } = await chrome.storage.local.get([
-      "pairingId",
-      "lastError",
-      "lastCodeAt",
-    ]);
+    const { pairingId, lastError, lastCodeAt, pushUnavailable } =
+      await chrome.storage.local.get([
+        "pairingId",
+        "lastError",
+        "lastCodeAt",
+        "pushUnavailable",
+      ]);
 
     const id = (pairingId as string | undefined) ?? null;
 
@@ -271,6 +287,7 @@ export default defineBackground(() => {
       setupUrl: id ? `${RELAY_URL}/setup?p=${id}` : null,
       lastError: (lastError as string | undefined) ?? null,
       lastCodeAt: (lastCodeAt as number | undefined) ?? null,
+      pushUnavailable: pushUnavailable === true,
       pendingCode,
     };
   }

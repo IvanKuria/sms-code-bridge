@@ -141,8 +141,10 @@ describe("POST /pair", () => {
 });
 
 describe("GET /shortcut", () => {
-  it("serves a signed shortcut", async () => {
-    const res = await SELF.fetch("https://relay.test/shortcut");
+  // The path must end in .shortcut: the Shortcuts app appears to validate by extension
+  // and rejects a bare /shortcut path with "the shortcut URL provided was invalid".
+  it.each(["/sms-code-bridge.shortcut", "/shortcut"])("serves a signed shortcut at %s", async (path) => {
+    const res = await SELF.fetch(`https://relay.test${path}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toContain(".shortcut");
 
@@ -270,7 +272,7 @@ describe("GET /setup", () => {
     const html = await res.text();
     expect(html).toContain(PAIRING_ID);
     // A direct-download fallback, for when the shortcuts:// scheme does not fire.
-    expect(html).toContain('href="https://relay.test/shortcut"');
+    expect(html).toContain('href="https://relay.test/sms-code-bridge.shortcut"');
   });
 
   it("points the Add Shortcut button at the shortcuts:// import scheme", async () => {
@@ -279,7 +281,10 @@ describe("GET /setup", () => {
     // Handing the file to the Shortcuts app directly is more reliable than depending on
     // Safari's download handling, which varies by iOS version.
     expect(html).toContain("shortcuts://import-shortcut?url=");
-    expect(html).toContain(encodeURIComponent("https://relay.test/shortcut"));
+    // Literal, NOT percent-encoded: Shortcuts reads the url parameter as-is, so an
+    // encoded https%3A%2F%2F... is not a URL as far as it is concerned.
+    expect(html).toContain("url=https://relay.test/sms-code-bridge.shortcut");
+    expect(html).not.toContain("url=https%3A");
   });
 
   it("rejects a missing pairing code", async () => {

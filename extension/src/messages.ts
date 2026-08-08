@@ -24,4 +24,6 @@ export interface Status {
   setupUrl: string | null;
   lastError: string | null;
   lastCodeAt: number | null;
+  /** True when this browser has no push service at all (de-googled Chromium forks). */
+  pushUnavailable: boolean;
 }

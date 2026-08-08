@@ -6,13 +6,16 @@
 export function setupPage(pairingId: string, origin: string): string {
   const id = escapeHtml(pairingId);
 
-  // The shortcuts:// URL scheme hands the file straight to the Shortcuts app. Relying on
-  // Safari's download handling instead is flakier — it varies by iOS version and can end
-  // up in Files with no obvious way to open it.
-  const file = `${origin}/shortcut`;
-  const url = escapeHtml(
-    `shortcuts://import-shortcut?url=${encodeURIComponent(file)}&name=${encodeURIComponent("SMS Code Bridge")}`,
-  );
+  // The shortcuts:// scheme hands the file straight to the Shortcuts app.
+  //
+  // Two things it is fussy about, both learned the hard way:
+  //  - The path must end in `.shortcut`. Shortcuts appears to validate by extension, and
+  //    a bare `/shortcut` path is rejected as "the shortcut URL provided was invalid".
+  //  - The `url` parameter must NOT be percent-encoded. Shortcuts reads it literally, so
+  //    an encoded `https%3A%2F%2F...` is not a URL as far as it is concerned. Colons and
+  //    slashes are legal in a query value anyway.
+  const file = `${origin}/sms-code-bridge.shortcut`;
+  const url = escapeHtml(`shortcuts://import-shortcut?url=${file}&name=SMS%20Code%20Bridge`);
   const fallback = escapeHtml(file);
 
   return `<!doctype html>
