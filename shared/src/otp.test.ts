@@ -94,6 +94,23 @@ describe("split codes", () => {
     // "10 - 15" must not become 1015.
     expect(extractOtp("Delivery window is 10 - 15 today")).toBeNull();
   });
+
+  it("refuses a phone-shaped 3-4 split even when a keyword precedes it", () => {
+    // "code" vouches for the run, but NXX-XXXX is a local phone number, not a code.
+    expect(extractOtp("Call support code 555-1234")).toBeNull();
+    expect(extractOtp("Questions? Your reference code, call 800-1234")).toBeNull();
+  });
+
+  it("still joins even-group splits that a keyword vouches for", () => {
+    expect(extractOtp("Your code is 1234 5678")?.code).toBe("12345678");
+    expect(extractOtp("Your code is 482 910")?.code).toBe("482910");
+  });
+
+  it("handles a code at the end of a sentence", () => {
+    // The most common OTP shape in existence; a trailing period must not defeat it.
+    expect(extractOtp("Your verification code is 483921.")?.code).toBe("483921");
+    expect(extractOtp("Your code is 483921. Expires in 10 minutes.")?.code).toBe("483921");
+  });
 });
 
 describe("rejection", () => {

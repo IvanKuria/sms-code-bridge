@@ -4,6 +4,7 @@ import { Hono } from "hono";
 
 import { normalizePairingId, pairingKey, parseSubscription } from "./pairing.js";
 import { setupPage } from "./setup-page.js";
+import { SHORTCUT_BASE64 } from "./shortcut-asset.js";
 
 /** A rate limiter binding, present in production and absent in some test setups. */
 interface RateLimiter {
@@ -15,7 +16,6 @@ export interface Env {
   VAPID_SUBJECT: string;
   VAPID_PUBLIC_KEY: string;
   VAPID_PRIVATE_KEY: string;
-  SHORTCUT_URL: string;
   CODE_LIMITER?: RateLimiter;
   PAIR_LIMITER?: RateLimiter;
 }
@@ -51,7 +51,7 @@ app.get("/health", (c) =>
 app.get("/setup", (c) => {
   const id = normalizePairingId(c.req.query("p"));
   if (!id) return c.text("Invalid or missing pairing code.", 400);
-  return c.html(setupPage(id, c.env.SHORTCUT_URL));
+  return c.html(setupPage(id, new URL(c.req.url).origin));
 });
 
 /**
@@ -76,6 +76,34 @@ app.post("/pair", async (c) => {
   });
 
   return c.json({ ok: true }, 200);
+});
+
+/**
+ * Serves the signed Shortcut. Reached via `shortcuts://import-shortcut?url=...` from the
+ * setup page, which hands the file straight to the Shortcuts app.
+ *
+ * The pairing code is NOT baked in per user: signing requires macOS and cannot run in a
+ * Worker, so every user gets the same signed file and supplies their code through the
+ * shortcut's import question.
+ */
+app.get("/shortcut", (c) => {
+  if (!SHORTCUT_BASE64) {
+    return c.text(
+      "The Shortcut has not been built yet. See shortcut/build-shortcut.mjs.",
+      503,
+    );
+  }
+
+  const binary = atob(SHORTCUT_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  return c.body(bytes.buffer as ArrayBuffer, 200, {
+    "content-type": "application/octet-stream",
+    "content-disposition": 'attachment; filename="SMS Code Bridge.shortcut"',
+    // The file is identical for everyone and changes only on redeploy.
+    "cache-control": "public, max-age=3600",
+  });
 });
 
 /**

@@ -78,6 +78,12 @@ function matchSigil(body: string): ExtractedCode | null {
   return { code: m[2], domain: m[1].toLowerCase(), originBound: true };
 }
 
+/** True for the NXX-XXXX shape of a US local number. */
+function isPhoneShaped(raw: string): boolean {
+  const groups = raw.split(/[\s-]+/);
+  return groups.length === 2 && groups[0]?.length === 3 && groups[1]?.length === 4;
+}
+
 function bestDigitRun(body: string): Candidate | null {
   let best: Candidate | null = null;
 
@@ -95,6 +101,11 @@ function bestDigitRun(body: string): Candidate | null {
     // A run stitched across separators is only trustworthy when a keyword vouches for
     // it. Without that, "10 - 15" and "555-1234" both look exactly like split codes.
     if (raw.length !== code.length && !anchored) continue;
+
+    // Even with a keyword, a 3-then-4 split is a US local phone number far more often
+    // than a code: "call support code 555-1234". Split codes come in even groups
+    // ("123 456", "1234 5678"), so this shape costs us nothing real.
+    if (raw.length !== code.length && isPhoneShaped(raw)) continue;
 
     if (UNIT_SUFFIX.test(after)) continue;
     if (CURRENCY_PREFIX.test(before)) continue;

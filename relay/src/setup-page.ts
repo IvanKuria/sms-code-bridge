@@ -3,9 +3,17 @@
  * domain. The pairing code is embedded server-side, so the phone never has to display
  * "now type these 24 characters" — it is a tap to copy and a tap to import.
  */
-export function setupPage(pairingId: string, shortcutUrl: string): string {
+export function setupPage(pairingId: string, origin: string): string {
   const id = escapeHtml(pairingId);
-  const url = escapeHtml(shortcutUrl);
+
+  // The shortcuts:// URL scheme hands the file straight to the Shortcuts app. Relying on
+  // Safari's download handling instead is flakier — it varies by iOS version and can end
+  // up in Files with no obvious way to open it.
+  const file = `${origin}/shortcut`;
+  const url = escapeHtml(
+    `shortcuts://import-shortcut?url=${encodeURIComponent(file)}&name=${encodeURIComponent("SMS Code Bridge")}`,
+  );
+  const fallback = escapeHtml(file);
 
   return `<!doctype html>
 <html lang="en">
@@ -61,7 +69,8 @@ export function setupPage(pairingId: string, shortcutUrl: string): string {
     <li>
       <h2>Add the Shortcut</h2>
       <a class="btn" href="${url}">Add Shortcut</a>
-      <p class="hint">It will ask for your pairing code — paste what you just copied.</p>
+      <p class="hint">It will ask for your pairing code — paste what you just copied.
+      If nothing happens, <a href="${fallback}">download it directly</a>.</p>
     </li>
 
     <li>

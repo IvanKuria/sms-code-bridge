@@ -65,7 +65,7 @@ shows the input arriving as a Message object rather than text, set the input chi
 **Regex:**
 
 ```regex
-(?<=\b(?:code|otp|pin|passcode|password|verification|verify|token|auth|access)\b[^\d\n]{0,25})(?<![$£€¥]\s?)\d{4,8}(?![\d.-])(?!\s*(?:%|percent|minutes?|mins?|seconds?|secs?|hours?|hrs?|days?|weeks?|months?|years?)\b)
+(?<=\b(?:code|otp|pin|passcode|password|verification|verify|token|auth|access)\b[^\d\n]{0,25})(?<![$£€¥]\s?)\d{4,8}(?![\d-])(?!\.\d)(?!\s*(?:%|percent|minutes?|mins?|seconds?|secs?|hours?|hrs?|days?|weeks?|months?|years?)\b)
 ```
 
 Case-sensitive: **off**.
@@ -77,7 +77,8 @@ Read left to right:
 | `(?<=\b(?:code\|otp\|…)\b[^\d\n]{0,25})` | A keyword must appear within 25 non-digit characters *before* the run | `KEYWORD`, `KEYWORD_WINDOW = 40` |
 | `(?<![$£€¥]\s?)` | Reject prices | `CURRENCY_PREFIX` |
 | `\d{4,8}` | The code | `MIN_LENGTH` / `MAX_LENGTH` |
-| `(?![\d.-])` | Don't take the head of a longer number, a decimal, or a phone-number fragment | implied by `DIGIT_RUN` matching maximally |
+| `(?![\d-])` | Don't take the head of a longer number or a phone-number fragment | implied by `DIGIT_RUN` matching maximally |
+| `(?!\.\d)` | Don't take the integer part of a decimal — but **do** allow a sentence-final period | `UNIT_SUFFIX` after normalisation |
 | `(?!\s*(?:minutes?\|…)\b)` | Reject durations and percentages | `UNIT_SUFFIX` |
 
 ### Getting the value out

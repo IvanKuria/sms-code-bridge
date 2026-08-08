@@ -140,6 +140,22 @@ describe("POST /pair", () => {
   });
 });
 
+describe("GET /shortcut", () => {
+  it("serves a signed shortcut", async () => {
+    const res = await SELF.fetch("https://relay.test/shortcut");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toContain(".shortcut");
+
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(bytes.byteLength).toBeGreaterThan(1000);
+
+    // "AEA1" — an Apple Encrypted Archive, which is what a *signed* shortcut is. An
+    // unsigned one starts with "bplist00" and iOS 15+ refuses to import it, so this is
+    // the assertion that catches shipping an unsigned file.
+    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe("AEA1");
+  });
+});
+
 describe("DELETE /pair", () => {
   it("revokes a pairing so a leaked id stops delivering", async () => {
     await pair();
@@ -253,7 +269,17 @@ describe("GET /setup", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain(PAIRING_ID);
-    expect(html).toContain("https://www.icloud.com/shortcuts/test");
+    // A direct-download fallback, for when the shortcuts:// scheme does not fire.
+    expect(html).toContain('href="https://relay.test/shortcut"');
+  });
+
+  it("points the Add Shortcut button at the shortcuts:// import scheme", async () => {
+    const res = await SELF.fetch(`https://relay.test/setup?p=${PAIRING_ID}`);
+    const html = await res.text();
+    // Handing the file to the Shortcuts app directly is more reliable than depending on
+    // Safari's download handling, which varies by iOS version.
+    expect(html).toContain("shortcuts://import-shortcut?url=");
+    expect(html).toContain(encodeURIComponent("https://relay.test/shortcut"));
   });
 
   it("rejects a missing pairing code", async () => {

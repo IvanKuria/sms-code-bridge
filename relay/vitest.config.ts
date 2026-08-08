@@ -19,7 +19,6 @@ export default defineWorkersConfig({
             VAPID_PUBLIC_KEY:
               "BPZYZpRsI-WugbcDSko5835kYU0w1UAWAUWF7yEzJ45AXAK_xIn7tbecDNZmNrTI1HND69gtFf9oSRIgTMQ8X6k",
             VAPID_PRIVATE_KEY: "VMp_3taEsmpQAhNio1yZ4PAEXr9Hld26KhyaiXJPfTY",
-            SHORTCUT_URL: "https://www.icloud.com/shortcuts/test",
           },
         },
       },
