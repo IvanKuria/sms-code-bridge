@@ -22,18 +22,12 @@ VAPID_SUBJECT = "mailto:ikuria@ucsc.edu"
 # Do NOT enable [observability] / Workers Logs to get this breakdown instead. Those capture
 # request URLs, and `GET /setup?p=<pairingId>` would then write a live bearer token into a
 # retained log.
-# DISABLED until Analytics Engine is switched on for this account. Declaring the binding
-# before then fails every deploy with error 10089, which blocks shipping anything else.
-#
-# To restore: enable it once at
-#   https://dash.cloudflare.com/ef67b40d1e08d1a9a25e2a69da0cc58f/workers/analytics-engine
-# then uncomment the three lines below and redeploy. No code change is needed — `track()`
-# already calls `env.OPS?.writeDataPoint(...)`, so the relay runs fine without it and
-# simply records nothing.
-#
-# [[analytics_engine_datasets]]
-# binding = "OPS"
-# dataset = "relay_ops"
+# The dataset is created implicitly by the first writeDataPoint — there is nothing to
+# create in the dashboard. Analytics Engine does have to be enabled for the account first,
+# though: declaring this binding before that fails every deploy with error 10089.
+[[analytics_engine_datasets]]
+binding = "OPS"
+dataset = "relay_ops"
 
 # Abuse protection without burning KV writes.
 [[unsafe.bindings]]

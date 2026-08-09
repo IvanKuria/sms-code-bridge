@@ -18,14 +18,42 @@
  *   blob3   host class     push host class on code ok / push_failed
  *   double1 pushMs         push round-trip in ms
  */
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID ?? "ef67b40d1e08d1a9a25e2a69da0cc58f";
-const TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const DATASET = "relay_ops";
 
-if (!TOKEN) {
-  console.error(`CLOUDFLARE_API_TOKEN is not set.
+/**
+ * `wrangler login` already stores an OAuth token that can read this dataset, so the CLI
+ * works with no setup at all. It expires and cannot be handed to the Worker, which is why
+ * the /ops dashboard still needs a proper API token — but for a quick look from a machine
+ * that has already run `wrangler login`, this is enough.
+ */
+function wranglerToken() {
+  for (const p of [
+    join(homedir(), "Library/Preferences/.wrangler/config/default.toml"),
+    join(homedir(), ".config/.wrangler/config/default.toml"),
+    join(homedir(), ".wrangler/config/default.toml"),
+  ]) {
+    try {
+      const m = readFileSync(p, "utf8").match(/oauth_token\s*=\s*"([^"]+)"/);
+      if (m?.[1]) return m[1];
+    } catch {
+      /* try the next location */
+    }
+  }
+  return null;
+}
 
-Create one at https://dash.cloudflare.com/profile/api-tokens
+const TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? wranglerToken();
+
+if (!TOKEN) {
+  console.error(`No credentials found.
+
+Either run \`npx wrangler login\` (this script will then use that token), or create an
+API token at https://dash.cloudflare.com/profile/api-tokens
   → Create Token → Custom token
   → Permissions: Account · Account Analytics · Read
   → Account Resources: include your account
