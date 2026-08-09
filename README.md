@@ -50,10 +50,14 @@ native app.
 - **A Shortcuts automation** is the only remaining path that installs no software on either
   device. Chosen by elimination, not because it is the strongest.
 
-A relay is likewise unavoidable rather than desirable. An MV3 service worker cannot hold a
-socket open and is suspended aggressively; the Push API is the only mechanism that reliably
-wakes it, and Push by definition needs a server holding VAPID keys. The relay can be tiny and
-stateless for codes, but it cannot be zero.
+A relay is likewise unavoidable rather than desirable. An MV3 service worker is suspended
+aggressively, and the Push API is the only mechanism that reliably wakes a suspended one —
+which by definition needs a server holding VAPID keys. The relay can be tiny and stateless
+for codes, but it cannot be zero.
+
+Browsers that removed FCM cannot be pushed to at all, so they get a second transport: a
+WebSocket held open to the relay. That one cannot wake a suspended worker, which is why it is
+the fallback rather than the design.
 
 Full reasoning, including the rejected options and the accepted risks, is in
 [docs/DESIGN.md](docs/DESIGN.md).
@@ -84,7 +88,7 @@ Full reasoning, including the rejected options and the accepted risks, is in
       POST to the push service                (FCM for Chrome)
       forget the code
       │
-      │  Web Push / VAPID
+      │  Web Push / VAPID  (or a WebSocket, see below)
       ▼
                                             Extension service worker
                                               wakes from suspension
@@ -115,10 +119,10 @@ Roughly 1–2 seconds from SMS to fillable, on the assumption Spike 1 is yet to 
 |---|---|
 | `extension/` | The MV3 extension. TypeScript, WXT, React popup and onboarding page. Service worker owns the pairing ID, push subscription and code TTL; the content script does field detection and filling. |
 | `assets/` | Logo source (`logo.svg`, plus an optically corrected `logo-16.svg`) and two generators: `render-icons.mjs` rasterizes the icons into `extension/public/icon/` (`pnpm icons`), and `render-privacy.mjs` builds the hosted privacy page from `PRIVACY.md` (`pnpm privacy`). |
-| `relay/` | One Cloudflare Worker (Hono). `POST /pair`, `DELETE /pair`, `POST /code`, `GET /setup`, `GET /health`. Also serves the mobile onboarding page. |
+| `relay/` | One Cloudflare Worker (Hono). `POST`/`GET`/`DELETE /pair`, `POST /code`, `GET /ws` (socket fallback), `GET /setup`, `GET /test`, `GET /ops`, `GET /health`, and the signed Shortcut. Serves the mobile onboarding page and the walkthrough video as static assets. |
 | `shared/` | `otp.ts` (reference code extraction) and `fields.ts` (OTP field detection and verified filling), plus their tests. Imported by both the relay and the extension. |
 | `shortcut/` | `README.md` is the source of truth for the iPhone side. `.shortcut` files are signed plist blobs, not text, so there is nothing to check in — the document is the build spec. |
-| `docs/` | `DESIGN.md` (architecture and decisions), `SPIKES.md` (the three gating spikes, with the tables to record into). |
+| `docs/` | `DESIGN.md` (architecture and decisions), `SPIKES.md` (the three gating spikes, with the tables to record into), `STORE-LISTING.md` (Chrome Web Store submission material). |
 
 pnpm workspaces. Node ≥ 22, pnpm 10.
 
@@ -354,7 +358,16 @@ tell a detection problem from a delivery problem.
 **"This browser has no push service."**
 
 Chrome's Push API is FCM, and de-googled Chromium forks (ungoogled-chromium, Helium, Thorium)
-remove it. Nothing can be done from this side. Chrome, Edge, Brave and Vivaldi all work.
+remove it, so `pushManager.subscribe()` can never succeed there.
+
+These browsers are supported anyway, over a second transport: the extension holds a WebSocket
+open to the relay and codes are written down it. Setup is identical and nothing extra is
+stored — holding the socket *is* the registration.
+
+It is genuinely second-best, not equivalent. Push wakes a suspended service worker by design;
+a socket cannot. If the worker is evicted and a code arrives before the one-minute
+`chrome.alarms` heartbeat re-establishes the connection, that code is lost. Chrome, Edge,
+Brave and Vivaldi use push and do not have this window.
 
 ## License
 

@@ -45,7 +45,7 @@ export default defineConfig({
     name: "SMS Code Bridge",
     description:
       "Brings iPhone SMS verification codes to Chrome and fills them for you.",
-    version: "0.2.0",
+    version: "0.3.0",
     // storage: pairing id and status only, never codes.
     // notifications: the fallback when no OTP field is on screen.
     // alarms: the only thing that survives the service worker being evicted, and so the
