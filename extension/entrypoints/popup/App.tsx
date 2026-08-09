@@ -208,7 +208,7 @@ function WaitingDiagnosis({ relayAlive }: { relayAlive: boolean | null }) {
               Choose <strong>Run Immediately</strong>
             </li>
             <li>
-              Pick <strong>OTP Bridge</strong>
+              Pick <strong>sms-code-bridge</strong>
             </li>
           </ol>
           <p className="muted">

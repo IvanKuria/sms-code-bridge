@@ -9,6 +9,16 @@ compatibility_flags = ["nodejs_compat"]
 binding = "PAIRINGS"
 id = "36d66fbcf869486983e1c0a49d300003"
 
+# Static assets, served on the same origin as the API. The setup walkthrough video is
+# 2 MB — far beyond what a Worker script bundle can carry — but assets are uploaded
+# separately and are not subject to the script size limit.
+#
+# Same-origin matters here beyond tidiness: the setup page ships a strict CSP, and
+# hosting the video elsewhere would mean opening `media-src` to a third-party origin.
+# A request matching a file here is served directly; everything else reaches the Worker.
+[assets]
+directory = "./public"
+
 [vars]
 VAPID_SUBJECT = "mailto:klukakbusiness@gmail.com"
 

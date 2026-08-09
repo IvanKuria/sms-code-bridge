@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 
+import { RELAY_URL } from "../../src/config";
 import type { CodePayload, Status } from "../../src/messages";
 
 type FullStatus = Status & { pendingCode: CodePayload | null };
@@ -64,6 +65,24 @@ export function App() {
           Four steps, about two minutes. Most of it happens on your phone, so keep this page
           open while you work through it.
         </p>
+
+        {/*
+          Served from the relay rather than bundled: a 2 MB asset inside the extension
+          would be downloaded by every user on install, whether they watch it or not, and
+          could only be updated by shipping a new store release. preload="none" means it
+          costs nothing until someone asks for it.
+        */}
+        <details className="watch">
+          <summary>Watch the whole thing first (90 seconds, no sound)</summary>
+          <video
+            controls
+            playsInline
+            preload="none"
+            poster={`${RELAY_URL}/tutorial-poster.jpg`}
+          >
+            <source src={`${RELAY_URL}/tutorial.mp4`} type="video/mp4" />
+          </video>
+        </details>
       </div>
 
       <div className="columns">
@@ -137,7 +156,7 @@ export function App() {
                   <em>Run After Confirmation</em>
                 </li>
                 <li>
-                  Pick <strong>SMS Code Bridge</strong> and tap{" "}
+                  Pick <strong>sms-code-bridge</strong> and tap{" "}
                   <span className="ui">Done</span>
                 </li>
               </ol>

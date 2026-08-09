@@ -71,7 +71,10 @@ const OTP_REGEX =
   "(?<=\\b(?:code|otp|pin|passcode|password|verification|verify|token|auth|access)\\b[^\\d\\n]{0,25})(?<![$£€¥]\\s?)\\d{4,8}(?![\\d-])(?!\\.\\d)(?!\\s*(?:%|percent|minutes?|mins?|seconds?|secs?|hours?|hrs?|days?|weeks?|months?|years?)\\b)";
 
 const IMPORT_QUESTION_TEXT = "Paste your pairing code";
-const SHORTCUT_NAME = "OTP Bridge";
+// iOS names an imported shortcut after the file it came from, not this value — it is
+// served as sms-code-bridge.shortcut, so that is what users see in the picker. Kept in
+// step with the filename so both agree wherever either one surfaces.
+const SHORTCUT_NAME = "sms-code-bridge";
 
 /**
  * The automation instructions, carried inside the shortcut itself.
@@ -94,7 +97,7 @@ const AUTOMATION_COMMENT = [
   '3. Set "Message Contains" to: code',
   "4. Leave the sender as Any Sender",
   "5. Choose Run Immediately (not Run After Confirmation)",
-  '6. Pick "OTP Bridge" → Done',
+  '6. Pick "sms-code-bridge" → Done',
   "",
   "The first time a text arrives, iOS asks permission once. Tap Allow.",
   "After that codes arrive without you touching the phone.",

@@ -485,9 +485,11 @@ const SECRET_PAGE_HEADERS = {
   "cache-control": "no-store, max-age=0",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
-  // These pages carry small inline scripts and load nothing external.
+  // Small inline scripts and styles, plus the walkthrough video and its poster — both
+  // served from this same origin, which is why hosting them on the Worker rather than
+  // elsewhere keeps this policy free of third-party origins.
   "content-security-policy":
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
 } as const;
 
 /** Only 1, 7 and 30 are offered, so an arbitrary value cannot widen the query range. */

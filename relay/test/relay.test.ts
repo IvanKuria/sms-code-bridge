@@ -495,3 +495,26 @@ describe("headers on pages that carry a token in their URL", () => {
     },
   );
 });
+
+describe("setup walkthrough video", () => {
+  it("embeds the video same-origin and does not preload it", async () => {
+    const res = await SELF.fetch(`https://relay.test/setup?p=${PAIRING_ID}`);
+    const html = await res.text();
+    expect(html).toContain('src="/tutorial.mp4"');
+    expect(html).toContain('poster="/tutorial-poster.jpg"');
+    // The page is opened on a phone mid-setup, often on cellular. A 2 MB autoload
+    // would be charged to the user before they asked for it.
+    expect(html).toContain('preload="none"');
+    // iOS otherwise takes the video fullscreen and hides the instructions.
+    expect(html).toContain("playsinline");
+  });
+
+  it("permits media only from its own origin", async () => {
+    const res = await SELF.fetch(`https://relay.test/setup?p=${PAIRING_ID}`);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("media-src 'self'");
+    expect(csp).toContain("img-src 'self' data:");
+    // Hosting the video off-origin would have forced a third-party host in here.
+    expect(csp).not.toMatch(/media-src[^;]*https?:\/\//);
+  });
+});

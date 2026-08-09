@@ -412,3 +412,42 @@ button + button {
 .foot a:hover {
   text-decoration: underline;
 }
+
+/* Walkthrough video. Collapsed by default so the steps stay the focus. */
+.watch {
+  margin: 1.25rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 22rem;
+}
+
+.watch summary {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.watch summary::-webkit-details-marker {
+  display: none;
+}
+
+.watch summary::before {
+  content: "▶";
+  font-size: 0.75em;
+  margin-right: 0.5rem;
+  color: var(--accent);
+}
+
+.watch[open] summary::before {
+  content: "▼";
+}
+
+.watch video {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #000;
+}

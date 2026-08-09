@@ -92,12 +92,32 @@ export function setupPage(pairingId: string, origin: string): string {
 
   .hint { color:var(--muted); font-size:.875rem; margin-top:.5rem; }
   #copied { color:var(--accent); font-weight:600; }
+
+  .watch { margin:0 0 1.6rem; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .watch summary { padding:.8rem 1rem; font-weight:600; font-size:.95rem; cursor:pointer;
+    list-style:none; }
+  .watch summary::-webkit-details-marker { display:none; }
+  .watch summary::before { content:"▶"; font-size:.75em; margin-right:.5rem; color:var(--accent); }
+  .watch[open] summary::before { content:"▼"; }
+  .watch video { display:block; width:100%; height:auto; background:#000; }
 </style>
 </head>
 <body>
   <h1>Bring your codes to Chrome</h1>
   <p class="lede">Four steps, about two minutes. Keep this page open while you work
   through it.</p>
+
+  <!--
+    preload="none" is deliberate: this page is opened on a phone, mid-setup, often on
+    cellular. The poster is 46 KB and the video only downloads if it is asked for.
+    playsinline stops iOS taking it fullscreen and covering the instructions.
+  -->
+  <details class="watch">
+    <summary>Watch it done first (90 seconds, no sound)</summary>
+    <video controls playsinline preload="none" poster="/tutorial-poster.jpg">
+      <source src="/tutorial.mp4" type="video/mp4">
+    </video>
+  </details>
 
   <ol class="steps">
     <li class="step">
@@ -153,7 +173,7 @@ export function setupPage(pairingId: string, origin: string): string {
           <li>Leave the sender as <strong>Any Sender</strong></li>
           <li>Choose <span class="ui">Run Immediately</span>, not
           <em>Run After Confirmation</em></li>
-          <li>Pick <strong>OTP Bridge</strong> → <span class="ui">Done</span></li>
+          <li>Pick <strong>sms-code-bridge</strong> → <span class="ui">Done</span></li>
         </ol>
 
         <p class="hint">Apple lets apps share shortcuts but not automations, so this one
