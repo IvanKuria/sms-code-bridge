@@ -247,9 +247,7 @@ function showPill(
     //
     // Discarding it and calling cleanup() unconditionally meant the pill vanished, the
     // field stayed empty, and the code was gone for good — the background worker had
-    // already been told `handled: true`, so no notification fallback ever fired. Since
-    // `originBound` is always false in v1, this button is the ONLY path that ever reaches
-    // fillOtpField, which made it the only path a code could be silently lost on.
+    // already been told `handled: true`, so no notification fallback ever fired.
     if (fillOtpField(field, payload.code)) {
       chrome.runtime.sendMessage({ type: "fill-result", ok: true }).catch(() => {});
       if (always.checked) onAlwaysFill();

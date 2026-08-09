@@ -213,8 +213,12 @@ be one more thing to get wrong, and rotating hosts is our problem, not the user'
 POSTs `domain?`. Doing that needs a second *Match Text* (the sigil pattern lives on its own
 final line, so one regex cannot yield both values without capture groups and a group-getter
 action). That is a fifth row. The v1 shortcut sends `{pairingId, code}` only, so
-`originBound` is always false and the extension always shows the pill rather than filling
-silently.
+`originBound` is always false.
+
+That no longer costs the user an extra click. The extension grants silent autofill on
+**focus** instead — caret in the field, or an OTP field focused in the last 60 seconds, or a
+per-origin opt-in. The sigil path remains implemented and is used when a service does send
+one, chiefly so a domain *mismatch* can be caught and warned about.
 
 This is the right call until Spike 3 says otherwise: if one site in ten sends domain-bound
 codes, the silent-fill path is aspirational anyway (DESIGN §12, Spike 3). If the survey says

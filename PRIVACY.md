@@ -121,7 +121,15 @@ In `chrome.storage.local` (persists across restarts):
 | `revokeFailed` | whether the last rotation failed to revoke the old pairing ID |
 | `pushUnavailable` | whether this browser has a push service at all |
 | `onboardingRevision` | which version of the setup walkthrough you have been shown |
+| `autofillOrigins` | sites you ticked "always fill on this site" for, described below |
 | `stats` | diagnostic counters, described below |
+
+**`autofillOrigins` is the one key that records where you have been**, so it deserves to be
+called out rather than buried. It is a list of origins — `https://example.com` — and it grows
+only when you tick the box on the suggestion pill. It is never written automatically, it holds
+nothing about the site beyond its origin, no page, path, code or timestamp, and like everything
+else here it stays on this computer. Clearing it means unticking the box the next time a code
+arrives on that site, or removing the extension.
 
 **`stats` never leaves this computer.** It holds integer counts of our own delivery outcomes:
 how many pushes arrived, how many were duplicates, how often a code had no field to fill, how

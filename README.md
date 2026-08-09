@@ -295,14 +295,17 @@ Every incoming code produces a "ran your shortcut" banner on the phone.
 **Creating the automation is manual.** Apple allows distributing a shortcut, not an automation.
 One-time, per phone, and no product can engineer around it.
 
-**Origin-bound silent autofill is dormant.** The design fills silently only when the SMS carries
-an `@domain #code` sigil matching the frame's origin. Extracting both the domain and the code in
-one Shortcuts regex needs capture groups, and reading a capture group in Shortcuts needs an extra
-*Get Group from Matched Text* action — a fourth functional action the three-action budget cannot
-afford without risking the locked-phone reliability the whole product rests on. So the shortcut
-sends `{pairingId, code}` only, `originBound` is always false, and the extension always shows the
-pill rather than filling silently. The trusted path is implemented on both sides and waiting on
-Spike 3 to say whether it is worth the fourth action.
+**Origin-bound codes are not sent by the shortcut.** Extracting both the `@domain #code` sigil
+and the code in one Shortcuts regex needs capture groups, and reading a capture group needs an
+extra *Get Group from Matched Text* action — a fourth functional action the three-action budget
+cannot afford without risking the locked-phone reliability the whole product rests on. So the
+shortcut sends `{pairingId, code}` only and `originBound` is always false.
+
+Autofill does not depend on that. Silent filling is granted by **focus**: if the caret is inside
+the field the code is destined for, or an OTP field was focused in the last 60 seconds, or the
+user has opted the origin in, the code fills without asking. A domain *mismatch* still refuses to
+fill silently and warns — focus must not be able to launder a mismatched code, since being focused
+on the field is exactly what a phishing victim would be doing.
 
 **No retry on the phone.** If the POST fails, the code is lost. Adding retry lengthens the
 shortcut and hurts lock-screen reliability. Losing a code is always the correct trade.
