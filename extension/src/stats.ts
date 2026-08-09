@@ -49,7 +49,11 @@ export type StatKey =
   | "pair_found_dead"
   | "pushsubscriptionchange_fired"
   | "rotate_ok"
-  | "rotate_revoke_failed";
+  | "rotate_revoke_failed"
+  // The WebSocket fallback, used by browsers with no push service.
+  | "socket_open"
+  | "socket_code_received"
+  | "socket_dropped_unparseable";
 
 export type Stats = Partial<Record<StatKey, number>>;
 

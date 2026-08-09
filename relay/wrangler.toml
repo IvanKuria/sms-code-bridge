@@ -19,6 +19,18 @@ id = "36d66fbcf869486983e1c0a49d300003"
 [assets]
 directory = "./public"
 
+# Delivery for browsers with no push service (ungoogled-chromium forks). One object per
+# pairing ID, holding a hibernatable WebSocket. Codes pass through its memory and are
+# never written to storage — see src/socket.ts.
+[[durable_objects.bindings]]
+name = "SOCKETS"
+class_name = "PairingSocket"
+
+# SQLite-backed classes are the ones available without a paid plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PairingSocket"]
+
 [vars]
 VAPID_SUBJECT = "mailto:klukakbusiness@gmail.com"
 

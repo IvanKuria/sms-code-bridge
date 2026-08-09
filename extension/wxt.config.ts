@@ -48,7 +48,9 @@ export default defineConfig({
     version: "0.2.0",
     // storage: pairing id and status only, never codes.
     // notifications: the fallback when no OTP field is on screen.
-    permissions: ["storage", "notifications"],
+    // alarms: the only thing that survives the service worker being evicted, and so the
+    // only way the WebSocket fallback can be re-established without user action.
+    permissions: ["storage", "notifications", "alarms"],
     host_permissions: [relayHostPermission()],
   },
 });

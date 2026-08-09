@@ -32,6 +32,11 @@ export interface Status {
   /** True when this browser has no push service at all (de-googled Chromium forks). */
   pushUnavailable: boolean;
   /**
+   * Whether the WebSocket fallback is currently connected. Only meaningful when
+   * `pushUnavailable` is true — it is the transport those browsers use instead.
+   */
+  socketConnected: boolean;
+  /**
    * The last rotation could not revoke the old pairing ID, so it may still be live on the
    * relay. Kept separate from `lastError` because a subsequent successful re-pair clears
    * that field, and this warning must outlive it.

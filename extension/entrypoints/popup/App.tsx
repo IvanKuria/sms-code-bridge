@@ -105,9 +105,10 @@ export function App() {
         </div>
       )}
 
-      {status.pushUnavailable ? (
+      {status.pushUnavailable && !status.socketConnected ? (
         <p className="muted">
-          Nothing to set up. This browser cannot receive pushed codes at all.
+          This browser has no push service, so codes arrive over a direct connection
+          instead — reconnecting…
         </p>
       ) : !status.paired ? (
         <p className="muted">

@@ -518,3 +518,57 @@ describe("setup walkthrough video", () => {
     expect(csp).not.toMatch(/media-src[^;]*https?:\/\//);
   });
 });
+
+describe("WebSocket fallback for browsers with no push service", () => {
+  it("rejects a plain GET without an upgrade header", async () => {
+    const res = await SELF.fetch(`https://relay.test/ws?p=${PAIRING_ID}`);
+    expect(res.status).toBe(426);
+  });
+
+  it("rejects a malformed pairing id", async () => {
+    const res = await SELF.fetch("https://relay.test/ws?p=nope", {
+      headers: { upgrade: "websocket" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("upgrades a valid pairing id", async () => {
+    const res = await SELF.fetch(`https://relay.test/ws?p=${PAIRING_ID}`, {
+      headers: { upgrade: "websocket" },
+    });
+    expect(res.status).toBe(101);
+    expect(res.webSocket).toBeTruthy();
+    res.webSocket?.accept();
+    res.webSocket?.close();
+  });
+
+  it("delivers a code over the socket when there is no push subscription", async () => {
+    // No /pair call: this is exactly the ungoogled-chromium case, where subscribe() can
+    // never succeed so nothing is ever stored in KV.
+    const res = await SELF.fetch(`https://relay.test/ws?p=${PAIRING_ID}`, {
+      headers: { upgrade: "websocket" },
+    });
+    const ws = res.webSocket!;
+    ws.accept();
+
+    const received = new Promise<string>((resolve) => {
+      ws.addEventListener("message", (e) => resolve(String(e.data)));
+    });
+
+    const posted = await post("/code", { pairingId: PAIRING_ID, code: "246810" });
+    expect(posted.status).toBe(202);
+    await expect(posted.json()).resolves.toMatchObject({ via: "socket" });
+
+    const payload = JSON.parse(await received);
+    expect(payload.code).toBe("246810");
+    ws.close();
+  });
+
+  it("still 404s when no socket is connected and no subscription exists", async () => {
+    const res = await post("/code", {
+      pairingId: "AAAA-BBBB-CCCC-DDDD-EEEE-FFFF",
+      code: "123456",
+    });
+    expect(res.status).toBe(404);
+  });
+});

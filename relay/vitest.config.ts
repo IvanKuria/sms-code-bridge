@@ -13,6 +13,11 @@ export default defineWorkersConfig({
           compatibilityDate: "2024-12-30",
           compatibilityFlags: ["nodejs_compat"],
           kvNamespaces: ["PAIRINGS"],
+          // The WebSocket fallback's Durable Object. SQLite-backed to match production,
+          // where that is the class type available without a paid plan.
+          durableObjects: {
+            SOCKETS: { className: "PairingSocket", useSQLite: true },
+          },
           bindings: {
             VAPID_SUBJECT: "mailto:test@example.com",
             // Test-only keypair. Not used anywhere real.

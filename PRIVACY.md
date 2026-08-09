@@ -88,6 +88,15 @@ back — and rejected it precisely because it would require storing every code u
 Encrypting the payload is what makes "we never store codes" literally true
 (`docs/DESIGN.md` §11).
 
+**Browsers with no push service.** Builds derived from ungoogled-chromium remove Google's
+FCM, which the Push API depends on, so those browsers cannot be pushed to at all. For them
+the extension holds a WebSocket open to the relay and codes are written down it instead.
+The privacy properties are the same or better: the code passes through a Durable Object's
+memory for the instant between arriving and being sent, and is never written to storage.
+Nothing is persisted for these pairings at all — holding the socket *is* the registration,
+so a closed socket simply means undeliverable. The only bytes the browser ever sends up
+that socket are the string `ping`.
+
 **The only thing persisted is the pairing map:** pairing ID → push subscription, in Workers KV,
 with a one-year expiry (`PAIRING_TTL_SECONDS`). A push subscription is an endpoint URL at your
 browser vendor's push service plus two public key values. It contains no personal information
@@ -120,6 +129,7 @@ In `chrome.storage.local` (persists across restarts):
 | `lastPairCheckAt` | when the relay was last asked whether this pairing is still alive |
 | `revokeFailed` | whether the last rotation failed to revoke the old pairing ID |
 | `pushUnavailable` | whether this browser has a push service at all |
+| `socketConnected` | whether the fallback connection is currently up |
 | `onboardingRevision` | which version of the setup walkthrough you have been shown |
 | `autofillOrigins` | sites you ticked "always fill on this site" for, described below |
 | `stats` | diagnostic counters, described below |

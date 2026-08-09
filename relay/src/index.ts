@@ -9,6 +9,9 @@ import { setupPage } from "./setup-page.js";
 import { SHORTCUT_BASE64 } from "./shortcut-asset.js";
 import { testPage } from "./test-page.js";
 
+// Must be exported from the entrypoint for the runtime to find the class.
+export { PairingSocket } from "./socket.js";
+
 /** A rate limiter binding, present in production and absent in some test setups. */
 interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -32,6 +35,8 @@ export interface Env {
   /** Cloudflare API token with Account Analytics: Read, for querying the dataset. */
   CF_API_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
+  /** One object per pairing ID, holding the WebSocket used when push is unavailable. */
+  SOCKETS: DurableObjectNamespace;
 }
 
 /**
@@ -184,6 +189,29 @@ app.get("/pair", async (c) => {
   track(c.env, "pair_check", stored ? "alive" : "dead");
 
   return c.json({ paired: stored !== null }, 200);
+});
+
+/**
+ * WebSocket delivery for browsers with no push service.
+ *
+ * The extension opens this only after `pushManager.subscribe()` has failed, which on an
+ * ungoogled-chromium build it always will. Holding the socket IS the registration — there
+ * is no separate pairing record, so nothing extra is stored and a closed socket simply
+ * means undeliverable.
+ */
+app.get("/ws", async (c) => {
+  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+    return c.text("expected a websocket upgrade", 426);
+  }
+
+  const id = normalizePairingId(c.req.query("p"));
+  if (!id) {
+    track(c.env, "ws", "bad_pairing_id");
+    return c.json({ error: "bad_pairing_id" }, 400);
+  }
+
+  track(c.env, "ws", "connect");
+  return socketStub(c.env, id).fetch(new Request("https://socket/connect", c.req.raw));
 });
 
 /**
@@ -363,6 +391,21 @@ app.post("/code", async (c) => {
 
   const stored = await c.env.PAIRINGS.get(pairingKey(id));
   if (!stored) {
+    // No push subscription. Either this ID was never paired, or the browser has no push
+    // service and is holding a socket open instead — the ungoogled-chromium case.
+    const sent = await deliverViaSocket(c.env, id, {
+      code: code.code,
+      domain: code.domain ?? null,
+      originBound: code.originBound,
+      sentAt: Date.now(),
+      ttl: CODE_TTL_SECONDS,
+    });
+
+    if (sent > 0) {
+      track(c.env, "code", "ok", { blobs: [source, "socket"], doubles: [0] });
+      return c.json({ ok: true, via: "socket" }, 202);
+    }
+
     track(c.env, "code", "unknown_pairing", { blobs: [source] });
     return c.json({ error: "unknown_pairing" }, 404);
   }
@@ -459,6 +502,32 @@ async function push(
     return res.ok ? "ok" : "error";
   } catch {
     return "error";
+  }
+}
+
+/** One object per pairing ID. The ID is a 120-bit random value, so names do not collide. */
+function socketStub(env: Env, pairingId: string) {
+  return env.SOCKETS.get(env.SOCKETS.idFromName(pairingId));
+}
+
+/**
+ * Hands a payload to whatever sockets that pairing has open. Returns how many received
+ * it — zero means nobody is listening, which is indistinguishable from an unknown pairing
+ * and is treated as such by the caller.
+ */
+async function deliverViaSocket(env: Env, pairingId: string, payload: unknown): Promise<number> {
+  try {
+    const res = await socketStub(env, pairingId).fetch("https://socket/deliver", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return 0;
+    const body = (await res.json()) as { sent?: number };
+    return typeof body.sent === "number" ? body.sent : 0;
+  } catch {
+    // A delivery path that cannot be reached must never fail the request; the caller
+    // falls through to reporting the pairing as unknown.
+    return 0;
   }
 }
 

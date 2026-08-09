@@ -209,6 +209,18 @@ export default defineBackground(() => {
       return;
     }
 
+    await acceptPayload(payload);
+  }
+
+  /**
+   * Everything that happens to a code once it has been parsed, shared by both transports.
+   *
+   * Push and socket differ only in how the bytes arrive; freshness, de-duplication,
+   * targeting and the notification fallback must behave identically, and will drift apart
+   * if each path implements them.
+   */
+  async function acceptPayload(payload: CodePayload): Promise<void> {
+
     // `age` is this machine's clock minus the relay's. A push that has genuinely been in
     // flight for over a minute is rare; an age of minutes, or a negative one, almost
     // always means the two clocks disagree rather than that the code is old.
@@ -255,18 +267,31 @@ export default defineBackground(() => {
   function parsePayload(data: PushMessageData | null): CodePayload | null {
     if (!data) return null;
     try {
-      const raw = data.json() as Partial<CodePayload>;
-      if (typeof raw.code !== "string" || !/^[A-Za-z0-9]{4,8}$/.test(raw.code)) return null;
-      return {
-        code: raw.code,
-        domain: typeof raw.domain === "string" ? raw.domain : null,
-        originBound: raw.originBound === true,
-        sentAt: typeof raw.sentAt === "number" ? raw.sentAt : Date.now(),
-        ttl: typeof raw.ttl === "number" ? raw.ttl : CODE_TTL_MS / 1000,
-      };
+      return parseCodePayload(data.json());
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Validates a payload from either transport.
+   *
+   * Shared deliberately: the socket carries the same JSON the push does, and a relay that
+   * could send one shape over push and another over a socket is a bug waiting to happen.
+   * The code shape is re-checked here even though the relay checks it, because this is the
+   * boundary where untrusted bytes become something we type into a page.
+   */
+  function parseCodePayload(input: unknown): CodePayload | null {
+    if (typeof input !== "object" || input === null) return null;
+    const raw = input as Partial<CodePayload>;
+    if (typeof raw.code !== "string" || !/^[A-Za-z0-9]{4,8}$/.test(raw.code)) return null;
+    return {
+      code: raw.code,
+      domain: typeof raw.domain === "string" ? raw.domain : null,
+      originBound: raw.originBound === true,
+      sentAt: typeof raw.sentAt === "number" ? raw.sentAt : Date.now(),
+      ttl: typeof raw.ttl === "number" ? raw.ttl : CODE_TTL_MS / 1000,
+    };
   }
 
   function prunePayloads(): void {
@@ -407,24 +432,149 @@ export default defineBackground(() => {
       await bump(noPushService ? "pair_failed_no_push_service" : "pair_failed_network");
 
       await chrome.storage.local.set({
-        lastError: noPushService
-          ? "This browser has no push service, so codes cannot be delivered. " +
-            "Browsers built on ungoogled-chromium (Helium, Thorium and similar) remove " +
-            "Google's FCM, which the Push API depends on. Use Chrome, Edge, Brave or " +
-            "Vivaldi."
-          : message || "Could not reach the relay.",
+        lastError: noPushService ? null : message || "Could not reach the relay.",
         pushUnavailable: noPushService,
       });
+
+      // No push service is not the end of the road. Browsers built on
+      // ungoogled-chromium strip out FCM, which the Push API depends on — so instead of
+      // waiting to be pushed at, hold a socket open and let the relay write down it.
+      if (noPushService) {
+        const { pairingId: existing } = await chrome.storage.local.get("pairingId");
+        const pairingId = (existing as string | undefined) ?? generatePairingId();
+        await chrome.storage.local.set({ pairingId });
+        openSocket(pairingId);
+      }
     }
   }
 
+
+  /* ------------------------------------------------------- socket transport */
+
+  /**
+   * Delivery for browsers with no push service.
+   *
+   * ungoogled-chromium forks (Helium, Thorium) strip out FCM, and Chrome's Push API is
+   * FCM, so `pushManager.subscribe()` can never succeed there. Rather than telling those
+   * users the product cannot work, hold a WebSocket open to the relay and let it write
+   * codes down that instead.
+   *
+   * A live socket also keeps the MV3 service worker alive: socket activity resets its idle
+   * timer, which is the property that makes this viable at all. The alarm below is the
+   * backstop for when it is torn down anyway.
+   */
+  let socket: WebSocket | null = null;
+  let socketPairingId: string | null = null;
+  let reconnectDelayMs = 1_000;
+
+  const RECONNECT_CEILING_MS = 60_000;
+  const PING_INTERVAL_MS = 30_000;
+
+  function openSocket(pairingId: string): void {
+    socketPairingId = pairingId;
+
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    // A dedicated alarm is the only thing that survives the worker being evicted, so it is
+    // registered once here rather than relying on the socket's own close handler.
+    chrome.alarms.create("socket-keepalive", { periodInMinutes: 1 });
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(`${RELAY_URL.replace(/^http/, "ws")}/ws?p=${encodeURIComponent(pairingId)}`);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+
+    socket = ws;
+
+    ws.addEventListener("open", () => {
+      reconnectDelayMs = 1_000;
+      void bump("socket_open");
+      void chrome.storage.local.set({ socketConnected: true, lastError: null });
+      ping();
+    });
+
+    ws.addEventListener("message", (event: MessageEvent) => {
+      void onSocketMessage(event.data);
+    });
+
+    ws.addEventListener("close", () => {
+      if (socket === ws) socket = null;
+      void chrome.storage.local.set({ socketConnected: false });
+      scheduleReconnect();
+    });
+
+    ws.addEventListener("error", () => {
+      try {
+        ws.close();
+      } catch {
+        /* close() throws if it never opened; the close handler still runs */
+      }
+    });
+
+    function ping(): void {
+      if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send("ping");
+      } catch {
+        return;
+      }
+      setTimeout(ping, PING_INTERVAL_MS);
+    }
+  }
+
+  async function onSocketMessage(data: unknown): Promise<void> {
+    if (data === "pong" || typeof data !== "string") return;
+
+    await bump("socket_code_received");
+    try {
+      const payload = parseCodePayload(JSON.parse(data));
+      if (payload) await acceptPayload(payload);
+      else await bump("socket_dropped_unparseable");
+    } catch {
+      await bump("socket_dropped_unparseable");
+    }
+  }
+
+  function scheduleReconnect(): void {
+    const delay = reconnectDelayMs;
+    // Backing off matters: a relay that is down should not be hammered once a second by
+    // every installation at once.
+    reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_CEILING_MS);
+    setTimeout(() => {
+      if (socketPairingId) openSocket(socketPairingId);
+    }, delay);
+  }
+
+  /**
+   * The service worker can be evicted at any point, taking the socket and every pending
+   * timer with it. This alarm is what brings it back.
+   */
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== "socket-keepalive") return;
+    void (async () => {
+      const { pushUnavailable, pairingId } = await chrome.storage.local.get([
+        "pushUnavailable",
+        "pairingId",
+      ]);
+      if (pushUnavailable !== true || typeof pairingId !== "string") return;
+      if (socket?.readyState === WebSocket.OPEN) return;
+      openSocket(pairingId);
+    })();
+  });
+
   async function buildStatus(): Promise<Status & { pendingCode: CodePayload | null }> {
-    const { pairingId, lastError, lastCodeAt, pushUnavailable, revokeFailed } =
+    const { pairingId, lastError, lastCodeAt, pushUnavailable, socketConnected, revokeFailed } =
       await chrome.storage.local.get([
         "pairingId",
         "lastError",
         "lastCodeAt",
         "pushUnavailable",
+        "socketConnected",
         "revokeFailed",
       ]);
 
@@ -445,6 +595,7 @@ export default defineBackground(() => {
       lastError: (lastError as string | undefined) ?? null,
       lastCodeAt: codeAt,
       pushUnavailable: pushUnavailable === true,
+      socketConnected: socketConnected === true,
       revokeFailed: revokeFailed === true,
       relayAlive,
       pendingCode,

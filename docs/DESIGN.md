@@ -72,6 +72,21 @@ iPhone SMS ──▶ Shortcuts automation (3 actions)
 
 Deliverables: a Chrome extension, a distributable shortcut, and one serverless function.
 
+### Two transports
+
+Push is the primary path. Browsers built on ungoogled-chromium (Helium, Thorium) strip out
+FCM, and Chrome's Push API *is* FCM, so `pushManager.subscribe()` can never succeed there —
+those users previously had no way to receive a code and were told to switch browsers.
+
+The fallback is a WebSocket to a Durable Object keyed by pairing ID. A Durable Object
+rather than polling because polling would require storing every code until collected, which
+is precisely what §11 rejects; here the code passes through the object's memory and is never
+persisted. Hibernation keeps an idle connection free.
+
+A live socket also keeps the MV3 service worker alive, since socket activity resets its idle
+timer. A `chrome.alarms` heartbeat re-establishes the connection when the worker is evicted
+anyway, which is the one thing that survives eviction.
+
 ### Why a relay is unavoidable
 
 An MV3 service worker cannot listen on a socket and cannot hold a persistent connection — it
