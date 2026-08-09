@@ -37,4 +37,11 @@ export interface Status {
    * that field, and this warning must outlive it.
    */
   revokeFailed: boolean;
+  /**
+   * Whether the relay still holds this pairing. Only checked while diagnosing a setup
+   * that has never delivered a code — it is the one probe that separates "the browser
+   * half is broken" from "the phone half was never finished". `null` when not checked or
+   * when the relay could not be reached.
+   */
+  relayAlive: boolean | null;
 }

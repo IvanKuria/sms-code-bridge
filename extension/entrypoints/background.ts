@@ -429,19 +429,54 @@ export default defineBackground(() => {
       ]);
 
     const id = (pairingId as string | undefined) ?? null;
+    const codeAt = (lastCodeAt as number | undefined) ?? null;
 
     // Drop a stale pending code rather than offering the user an expired one.
     if (pendingCode && Date.now() - pendingCode.sentAt > CODE_TTL_MS) pendingCode = null;
+
+    // Only probe while diagnosing. Once a code has ever arrived the whole chain is
+    // proven, and there is no reason to spend a request on every popup open.
+    const relayAlive = id && codeAt === null ? await checkRelayPairing(id) : null;
 
     return {
       paired: Boolean(id),
       pairingId: id,
       setupUrl: id ? `${RELAY_URL}/setup?p=${id}` : null,
       lastError: (lastError as string | undefined) ?? null,
-      lastCodeAt: (lastCodeAt as number | undefined) ?? null,
+      lastCodeAt: codeAt,
       pushUnavailable: pushUnavailable === true,
       revokeFailed: revokeFailed === true,
+      relayAlive,
       pendingCode,
     };
+  }
+
+  /** Short-lived so repeatedly opening the popup does not hammer the relay. */
+  let relayAliveCache: { at: number; alive: boolean } | null = null;
+
+  /**
+   * Asks the relay whether it still holds this pairing.
+   *
+   * This is what makes "no codes yet" diagnosable. A live pairing plus zero codes ever
+   * received means the browser end is registered and working, and the phone has simply
+   * never sent anything — which is overwhelmingly the missing automation, because adding
+   * the Shortcut alone does nothing and Apple does not allow automations to be shared.
+   */
+  async function checkRelayPairing(id: string): Promise<boolean | null> {
+    if (relayAliveCache && Date.now() - relayAliveCache.at < 30_000) {
+      return relayAliveCache.alive;
+    }
+    try {
+      const res = await fetch(`${RELAY_URL}/pair?p=${encodeURIComponent(id)}`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as { paired?: boolean };
+      const alive = body.paired === true;
+      relayAliveCache = { at: Date.now(), alive };
+      return alive;
+    } catch {
+      // Unreachable relay is not the same as a dead pairing; say nothing rather than
+      // blame the wrong half.
+      return null;
+    }
   }
 });

@@ -151,10 +151,7 @@ export function App() {
         </>
       ) : (
         <>
-          <p className="muted">
-            Scan this with your iPhone, then add the Shortcut <em>and</em> the automation.
-            No codes arrive until both exist.
-          </p>
+          <WaitingDiagnosis relayAlive={status.relayAlive} />
           {pairingBlock}
           <button type="button" onClick={guide}>
             Open the setup guide
@@ -162,6 +159,60 @@ export function App() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Shown once pairing has succeeded but no code has ever arrived.
+ *
+ * The generic version of this said "add the Shortcut and the automation", which is the
+ * same sentence whether you have done neither, one, or both. Since the relay confirms the
+ * browser end is registered, the remaining unknown is entirely on the phone — and the step
+ * people miss is the automation, because adding the Shortcut feels like finishing and
+ * Apple does not allow automations to be shared or imported.
+ */
+function WaitingDiagnosis({ relayAlive }: { relayAlive: boolean | null }) {
+  return (
+    <div className="diagnose">
+      <p className="diag-title">Waiting for your first code</p>
+
+      <ul className="checks">
+        <li className="ok">Extension paired</li>
+        {relayAlive === true && <li className="ok">Relay has your pairing</li>}
+        {relayAlive === false && <li className="bad">Relay lost your pairing — rotate below</li>}
+        {relayAlive === null && <li className="pending">Checking the relay…</li>}
+        <li className="pending">Your iPhone has not sent anything yet</li>
+      </ul>
+
+      {relayAlive !== false && (
+        <>
+          <p className="muted">
+            Adding the Shortcut is not enough on its own — Apple lets people share
+            shortcuts but not automations, so this part has to be done by hand once:
+          </p>
+          <ol className="steps">
+            <li>
+              Shortcuts app → <strong>Automation</strong>
+            </li>
+            <li>
+              Tap <strong>+</strong> → <strong>Message</strong>
+            </li>
+            <li>
+              Message Contains: <strong>code</strong>
+            </li>
+            <li>
+              Choose <strong>Run Immediately</strong>
+            </li>
+            <li>
+              Pick <strong>OTP Bridge</strong>
+            </li>
+          </ol>
+          <p className="muted">
+            Then text yourself “your code is 123456” to check it.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

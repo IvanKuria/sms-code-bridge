@@ -224,3 +224,73 @@ button + button {
   width: auto;
   padding: 7px 12px;
 }
+
+/* The "paired but nothing has arrived" diagnosis. */
+.diagnose {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  margin-bottom: 12px;
+}
+
+.diag-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.checks {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.checks li {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  color: var(--muted);
+}
+
+.checks li::before {
+  font-weight: 700;
+  width: 0.85em;
+  flex: none;
+}
+
+.checks li.ok::before {
+  content: "✓";
+  color: #1a7f37;
+}
+
+.checks li.bad::before {
+  content: "✕";
+  color: var(--warn);
+}
+
+.checks li.pending::before {
+  content: "·";
+}
+
+.checks li.bad {
+  color: var(--warn);
+}
+
+.diagnose .steps {
+  margin: 8px 0 0;
+  padding-left: 1.15em;
+  font-size: 12.5px;
+  color: var(--fg);
+}
+
+.diagnose .steps li {
+  margin-bottom: 3px;
+}
+
+.diagnose .muted {
+  font-size: 12.5px;
+  margin: 0;
+}
