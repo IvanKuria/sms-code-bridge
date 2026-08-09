@@ -9,7 +9,7 @@ name: Pages
 
 on:
   push:
-    branches: [master, main]
+    branches: [main]
     # Redeploy only when the policy or the way it is rendered actually changes.
     paths:
       - PRIVACY.md

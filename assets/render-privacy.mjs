@@ -24,7 +24,7 @@ const REPO = resolve(HERE, "..");
 const OUT = resolve(process.argv[2] ?? join(REPO, "site"));
 
 /** Where relative links in the markdown should point once the page is off GitHub. */
-const BLOB_BASE = "https://github.com/IvanKuria/sms-code-bridge/blob/master/";
+const BLOB_BASE = "https://github.com/IvanKuria/sms-code-bridge/blob/main/";
 
 const TITLE = "Privacy Policy — SMS Code Bridge";
 
