@@ -111,9 +111,11 @@ export function setupPage(pairingId: string, origin: string): string {
     preload="none" is deliberate: this page is opened on a phone, mid-setup, often on
     cellular. The poster is 46 KB and the video only downloads if it is asked for.
     playsinline stops iOS taking it fullscreen and covering the instructions.
+    The narration is normalised to -16 LUFS; the source averaged -31 dB, which a phone
+    speaker at half volume would lose.
   -->
   <details class="watch">
-    <summary>Watch it done first (90 seconds, no sound)</summary>
+    <summary>Watch it done first (90 seconds, with sound)</summary>
     <video controls playsinline preload="none" poster="/tutorial-poster.jpg">
       <source src="/tutorial.mp4" type="video/mp4">
     </video>

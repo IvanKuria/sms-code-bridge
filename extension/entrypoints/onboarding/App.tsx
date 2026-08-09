@@ -73,7 +73,7 @@ export function App() {
           costs nothing until someone asks for it.
         */}
         <details className="watch">
-          <summary>Watch the whole thing first (90 seconds, no sound)</summary>
+          <summary>Watch the whole thing first (90 seconds, with sound)</summary>
           <video
             controls
             playsInline
