@@ -13,7 +13,10 @@
     "icons": "node assets/render-icons.mjs",
     "privacy": "node assets/render-privacy.mjs",
     "shortcut:release": "node shortcut/release.mjs",
-    "ops": "node relay/scripts/ops.mjs"
+    "ops": "node relay/scripts/ops.mjs",
+    "assets": "node assets/render-icons.mjs && node assets/render-store.mjs && node assets/render-screenshots.mjs",
+    "assets:store": "node assets/render-store.mjs",
+    "assets:screenshots": "node assets/render-screenshots.mjs"
   },
   "devDependencies": {
     "marked": "^18.0.9",

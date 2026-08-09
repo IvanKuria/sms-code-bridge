@@ -90,6 +90,29 @@ rather than taken on faith.
 
 ---
 
+
+## Listing images
+
+All generated and reproducible — `pnpm assets` rebuilds every file below from the SVG
+mark and the real extension. Nothing here is hand-painted, so none of it can drift from
+the product.
+
+| File (`assets/store/`) | Size | Where it goes |
+|---|---|---|
+| `screenshot-1-autofill.png` | 1280×800 | Store screenshot 1 — **required**, at least one |
+| `screenshot-2-phishing.png` | 1280×800 | Store screenshot 2 |
+| `screenshot-3-setup.png` | 1280×800 | Store screenshot 3 |
+| `promo-small-440x280.png` | 440×280 | Small promo tile — **required** |
+| `promo-marquee-1400x560.png` | 1400×560 | Marquee tile; only needed to be eligible for featuring |
+| `github-social-1280x640.png` | 1280×640 | Repo → Settings → Social preview (no API for this; upload by hand) |
+| `logo-{256,512,1024}.png` | square | General use. The store's own 128×128 icon comes from `extension/public/icon/` |
+
+The screenshots are captured from the running extension, not mocked: the filled field in
+the first and the domain-mismatch warning in the second are produced by delivering a code
+through the content script's real message handler. The sign-in page they are demonstrated
+against is invented ("Northwind") — screenshotting a real service would put someone else's
+trademark and visual identity on our listing.
+
 ## Single-purpose statement
 
 Required by Chrome Web Store policy.
