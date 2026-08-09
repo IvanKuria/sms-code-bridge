@@ -19,6 +19,9 @@ export default defineWorkersConfig({
             VAPID_PUBLIC_KEY:
               "BPZYZpRsI-WugbcDSko5835kYU0w1UAWAUWF7yEzJ45AXAK_xIn7tbecDNZmNrTI1HND69gtFf9oSRIgTMQ8X6k",
             VAPID_PRIVATE_KEY: "VMp_3taEsmpQAhNio1yZ4PAEXr9Hld26KhyaiXJPfTY",
+            // CF_API_TOKEN / CF_ACCOUNT_ID are deliberately absent, so /ops exercises the
+            // "authenticated but analytics not connected" branch without real network.
+            OPS_TOKEN: "test-ops-token",
           },
         },
       },

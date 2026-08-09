@@ -3,6 +3,8 @@ import { extractOtp } from "@otp-bridge/shared";
 import { Hono, type Context } from "hono";
 
 import { normalizePairingId, pairingKey, parseSubscription } from "./pairing.js";
+import { opsDashboard, opsSetup } from "./ops-dashboard.js";
+import { loadOps, OpsUnavailable } from "./ops-query.js";
 import { setupPage } from "./setup-page.js";
 import { SHORTCUT_BASE64 } from "./shortcut-asset.js";
 import { testPage } from "./test-page.js";
@@ -25,6 +27,11 @@ export interface Env {
   CODE_LIMITER?: RateLimiter;
   PAIR_LIMITER?: RateLimiter;
   OPS?: AnalyticsDataset;
+  /** Gates GET /ops. Without it the dashboard is unreachable rather than public. */
+  OPS_TOKEN?: string;
+  /** Cloudflare API token with Account Analytics: Read, for querying the dataset. */
+  CF_API_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
 }
 
 /**
@@ -192,6 +199,62 @@ app.get("/pair", async (c) => {
  * Also how a Web Store reviewer without an iPhone can exercise the extension.
  */
 app.get("/test", (c) => c.html(testPage(normalizePairingId(c.req.query("p")))));
+
+/**
+ * The ops dashboard. Analytics Engine has no UI in the Cloudflare dashboard, so the relay
+ * renders its own view of the dataset it writes.
+ *
+ * Gated by a token: this is operational data, and an ungated /ops on a public Worker is
+ * simply a public dashboard. A wrong or missing key 404s rather than 401s, so the endpoint
+ * does not advertise that it exists.
+ */
+app.get("/ops", async (c) => {
+  if (!c.env.OPS_TOKEN) {
+    return c.html(
+      opsSetup(
+        "Dashboard not enabled",
+        `<p>Set a token so this page is not public:</p>
+         <ol><li><code>npx wrangler secret put OPS_TOKEN</code></li>
+         <li>Visit <code>/ops?key=&lt;that token&gt;</code></li></ol>`,
+      ),
+      503,
+    );
+  }
+
+  if (!timingSafeEqual(c.req.query("key") ?? "", c.env.OPS_TOKEN)) {
+    return c.text("Not found", 404);
+  }
+
+  const accountId = c.env.CF_ACCOUNT_ID;
+  const apiToken = c.env.CF_API_TOKEN;
+  if (!accountId || !apiToken) {
+    return c.html(
+      opsSetup(
+        "Analytics not connected",
+        `<p>The dashboard needs read access to the dataset the relay writes.</p>
+         <ol>
+           <li>Enable Analytics Engine once for the account, then uncomment the
+               <code>analytics_engine_datasets</code> block in <code>wrangler.toml</code>.</li>
+           <li>Create an API token with <strong>Account · Account Analytics · Read</strong>
+               at <code>dash.cloudflare.com/profile/api-tokens</code>.</li>
+           <li><code>npx wrangler secret put CF_API_TOKEN</code></li>
+           <li><code>npx wrangler secret put CF_ACCOUNT_ID</code></li>
+           <li><code>npx wrangler deploy</code></li>
+         </ol>`,
+      ),
+      503,
+    );
+  }
+
+  const days = clampDays(c.req.query("days"));
+  try {
+    const data = await loadOps(accountId, apiToken, days);
+    return c.html(opsDashboard(data, "/ops?key=" + encodeURIComponent(c.env.OPS_TOKEN)));
+  } catch (err) {
+    const message = err instanceof OpsUnavailable ? err.message : "Could not read the dataset.";
+    return c.html(opsSetup("Analytics unavailable", `<p>${escapeText(message)}</p>`), 502);
+  }
+});
 
 app.get("/sms-code-bridge.shortcut", serveShortcut);
 /** Legacy path, kept so an already-imported setup page does not break. */
@@ -386,6 +449,30 @@ async function rateLimited(limiter: RateLimiter | undefined, key: string): Promi
 
 function clientKey(req: Request): string {
   return req.headers.get("cf-connecting-ip") ?? "unknown";
+}
+
+/** Only 1, 7 and 30 are offered, so an arbitrary value cannot widen the query range. */
+function clampDays(raw: string | undefined): number {
+  const n = Number(raw);
+  return n === 7 || n === 30 ? n : 1;
+}
+
+/**
+ * Length-independent comparison. `===` on a secret leaks its prefix through timing, and
+ * the cost of doing this properly is a few lines.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function escapeText(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
 }
 
 async function safeJson(req: Request): Promise<Record<string, unknown> | null> {

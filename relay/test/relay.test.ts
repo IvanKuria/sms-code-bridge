@@ -1,6 +1,8 @@
 import { SELF, env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { opsDashboard } from "../src/ops-dashboard.js";
+
 const PAIRING_ID = "K7QM-3XR9-P2WD-8FNJ-4RTV-QW2X";
 
 // A structurally valid subscription: real P-256 public key, real 16-byte auth secret.
@@ -160,6 +162,82 @@ describe("GET /test", () => {
     expect(res.status).toBe(200);
     // normalizePairingId rejects it outright, so it never reaches the HTML.
     expect(await res.text()).not.toContain("<script>alert");
+  });
+});
+
+describe("GET /ops", () => {
+  it("404s on a wrong key rather than advertising that it exists", async () => {
+    const res = await SELF.fetch("https://relay.test/ops?key=wrong");
+    expect(res.status).toBe(404);
+  });
+
+  it("404s when the key is missing entirely", async () => {
+    expect((await SELF.fetch("https://relay.test/ops")).status).toBe(404);
+  });
+
+  it("404s on a key that is a prefix of the real one", async () => {
+    // Guards the timing-safe comparison against a length shortcut.
+    expect((await SELF.fetch("https://relay.test/ops?key=test-ops")).status).toBe(404);
+  });
+
+  it("asks for analytics credentials once the key is right", async () => {
+    const res = await SELF.fetch("https://relay.test/ops?key=test-ops-token");
+    expect(res.status).toBe(503);
+    expect(await res.text()).toContain("Account Analytics");
+  });
+});
+
+describe("ops dashboard rendering", () => {
+  const base = {
+    days: 1,
+    totalCodes: 44,
+    delivered: 42,
+    outcomes: [
+      { route: "code", outcome: "ok", n: 42 },
+      { route: "code", outcome: "push_failed", n: 2 },
+    ],
+    codeOutcomes: [
+      { outcome: "ok", n: 42 },
+      { outcome: "push_failed", n: 2 },
+    ],
+    latency: { p50: 540, p95: 980, max: 1500 },
+    series: [
+      { t: "2026-08-08 19:00:00", n: 18 },
+      { t: "2026-08-08 20:00:00", n: 24 },
+    ],
+    providers: [{ host: "googleapis", n: 3 }],
+  };
+
+  it("renders headline numbers and a chart", () => {
+    const html = opsDashboard(base, "/ops?key=x");
+    expect(html).toContain("Relay ops");
+    expect(html).toContain("95.5%"); // 42 of 44
+    expect(html).toContain("540 ms");
+    expect(html).toContain("<svg");
+  });
+
+  it("flags degraded health below 95%", () => {
+    const html = opsDashboard({ ...base, delivered: 20 }, "/ops?key=x");
+    expect(html).toContain("Degraded");
+    expect(html).not.toContain(">Healthy<");
+  });
+
+  it("degrades to an empty state rather than a broken chart", () => {
+    const html = opsDashboard(
+      { ...base, series: [], providers: [], outcomes: [], codeOutcomes: [], totalCodes: 0, delivered: 0, latency: null },
+      "/ops?key=x",
+    );
+    expect(html).toContain("No codes delivered yet");
+    expect(html).not.toContain("NaN");
+  });
+
+  it("escapes values coming back from the dataset", () => {
+    const html = opsDashboard(
+      { ...base, providers: [{ host: "<script>alert(1)</script>", n: 1 }] },
+      "/ops?key=x",
+    );
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;");
   });
 });
 
