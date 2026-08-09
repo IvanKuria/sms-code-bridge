@@ -475,3 +475,18 @@ describe("ops chart geometry", () => {
     expect(axisLabels).toBe(1);
   });
 });
+
+describe("headers on pages that carry a token in their URL", () => {
+  it.each(["/setup?p=" + PAIRING_ID, "/ops?key=test-ops-token"])(
+    "%s is uncacheable and leaks no referrer",
+    async (path) => {
+      const res = await SELF.fetch(`https://relay.test${path}`);
+      // Without no-store, a shared cache may retain a page containing a live token.
+      expect(res.headers.get("cache-control")).toContain("no-store");
+      // Without no-referrer, one outbound link hands the token to a third party.
+      expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+    },
+  );
+});

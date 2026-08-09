@@ -120,7 +120,7 @@ app.get("/health", (c) =>
 app.get("/setup", (c) => {
   const id = normalizePairingId(c.req.query("p"));
   if (!id) return c.text("Invalid or missing pairing code.", 400);
-  return c.html(setupPage(id, new URL(c.req.url).origin));
+  return c.html(setupPage(id, new URL(c.req.url).origin), 200, SECRET_PAGE_HEADERS);
 });
 
 /**
@@ -218,6 +218,7 @@ app.get("/ops", async (c) => {
          <li>Visit <code>/ops?key=&lt;that token&gt;</code></li></ol>`,
       ),
       503,
+      SECRET_PAGE_HEADERS,
     );
   }
 
@@ -254,16 +255,25 @@ app.get("/ops", async (c) => {
          </ol>`,
       ),
       503,
+      SECRET_PAGE_HEADERS,
     );
   }
 
   const days = clampDays(c.req.query("days"));
   try {
     const data = await loadOps(accountId, apiToken, days);
-    return c.html(opsDashboard(data, "/ops?key=" + encodeURIComponent(c.env.OPS_TOKEN)));
+    return c.html(
+      opsDashboard(data, "/ops?key=" + encodeURIComponent(c.env.OPS_TOKEN)),
+      200,
+      SECRET_PAGE_HEADERS,
+    );
   } catch (err) {
     const message = err instanceof OpsUnavailable ? err.message : "Could not read the dataset.";
-    return c.html(opsSetup("Analytics unavailable", `<p>${escapeText(message)}</p>`), 502);
+    return c.html(
+      opsSetup("Analytics unavailable", `<p>${escapeText(message)}</p>`),
+      502,
+      SECRET_PAGE_HEADERS,
+    );
   }
 });
 
@@ -461,6 +471,24 @@ async function rateLimited(limiter: RateLimiter | undefined, key: string): Promi
 function clientKey(req: Request): string {
   return req.headers.get("cf-connecting-ip") ?? "unknown";
 }
+
+/**
+ * Headers for pages that carry a bearer token in their own URL — `/setup?p=<pairingId>`
+ * and `/ops?key=<opsToken>`.
+ *
+ * `no-store` because without it any shared or intermediate cache is free to retain a page
+ * containing a live pairing token. `no-referrer` because a single outbound link would
+ * otherwise hand that token to a third party in the Referer header — the setup page links
+ * only to this same origin today, but that is one edit away from being untrue.
+ */
+const SECRET_PAGE_HEADERS = {
+  "cache-control": "no-store, max-age=0",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+  // These pages carry small inline scripts and load nothing external.
+  "content-security-policy":
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+} as const;
 
 /** Only 1, 7 and 30 are offered, so an arbitrary value cannot widen the query range. */
 function clampDays(raw: string | undefined): number {

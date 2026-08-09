@@ -13,12 +13,24 @@ export default defineContentScript({
     let pending: { payload: CodePayload; until: number } | null = null;
     let pill: Pill | null = null;
 
+    /** When an OTP-shaped field was last focused in this frame. */
+    let lastOtpFocusAt = 0;
+
+    /** The user has said "always fill on this site" for this origin. */
+    let alwaysFillHere = false;
+
+    void chrome.storage.local.get(AUTOFILL_ORIGINS_KEY).then((stored) => {
+      const origins = stored[AUTOFILL_ORIGINS_KEY];
+      alwaysFillHere = Array.isArray(origins) && origins.includes(location.origin);
+    });
+
     document.addEventListener(
       "focusin",
       (event) => {
         const el = event.target;
         if (!(el instanceof HTMLInputElement)) return;
         if (!looksLikeOtpInput(el)) return;
+        lastOtpFocusAt = Date.now();
         void chrome.runtime.sendMessage({ type: "otp-field-focused" });
       },
       true,
@@ -77,7 +89,7 @@ export default defineContentScript({
       if (!field) return false;
 
       const { payload } = pending;
-      const verdict = judge(payload);
+      const verdict = judge(payload, field);
 
       if (verdict === "trusted" && fillOtpField(field, payload.code)) {
         clearPending();
@@ -97,23 +109,76 @@ export default defineContentScript({
       previous?.destroy();
 
       chrome.runtime.sendMessage({ type: "pill-shown" }).catch(() => {});
-      pill = showPill(payload, verdict, field, () => {
-        pill = null;
+      pill = showPill(payload, verdict, field, {
+        onDone: () => {
+          pill = null;
+        },
+        onAlwaysFill: () => {
+          alwaysFillHere = true;
+          void rememberOrigin();
+        },
       });
       return true;
     }
 
     /**
-     * Only a domain-bound code whose host matches this frame's origin earns a silent
-     * fill. Everything else gets a click, and an explicit mismatch gets a warning —
-     * that mismatch is a phishing signal worth surfacing loudly.
+     * Decides whether a code may be filled without asking.
+     *
+     * Domain-bound codes were the original and only rule, which meant nothing was ever
+     * filled silently: the Shortcut sends no domain, so `originBound` is always false and
+     * every code demanded a click. Almost no services send the sigil, so waiting for it
+     * would have left autofill permanently dormant.
+     *
+     * Focus is the signal that actually exists. If the caret is sitting in the very field
+     * we are about to fill, the user's intent is not ambiguous — that is the whole
+     * interaction. A recency window covers the near-miss where they clicked away for a
+     * moment, and a per-origin opt-in covers the rest.
+     *
+     * A domain MISMATCH still overrides everything and is never filled silently: that is
+     * a phishing signal, and being focused on the field is exactly what a victim would be.
      */
-    function judge(payload: CodePayload): Verdict {
-      if (!payload.originBound || !payload.domain) return "unverified";
-      return hostMatches(location.hostname, payload.domain) ? "trusted" : "mismatch";
+    function judge(payload: CodePayload, field: OtpField): Verdict {
+      if (payload.originBound && payload.domain) {
+        return hostMatches(location.hostname, payload.domain) ? "trusted" : "mismatch";
+      }
+      if (alwaysFillHere) return "trusted";
+      if (focusIsInField(field)) return "trusted";
+      if (Date.now() - lastOtpFocusAt < FOCUS_TRUST_MS) return "trusted";
+      return "unverified";
+    }
+
+    async function rememberOrigin(): Promise<void> {
+      const stored = await chrome.storage.local.get(AUTOFILL_ORIGINS_KEY);
+      const origins: string[] = Array.isArray(stored[AUTOFILL_ORIGINS_KEY])
+        ? (stored[AUTOFILL_ORIGINS_KEY] as string[])
+        : [];
+      if (!origins.includes(location.origin)) {
+        await chrome.storage.local.set({
+          [AUTOFILL_ORIGINS_KEY]: [...origins, location.origin],
+        });
+      }
     }
   },
 });
+
+/** Origins the user has explicitly opted into silent autofill for. */
+const AUTOFILL_ORIGINS_KEY = "autofillOrigins";
+
+/**
+ * How long after leaving an OTP field we still treat the user as "on it". Long enough to
+ * survive a glance at the phone, short enough that a code arriving much later still asks.
+ */
+const FOCUS_TRUST_MS = 60_000;
+
+/**
+ * True when the caret is inside the exact field we are about to fill. More precise than
+ * re-running the name/id heuristics: split-box widgets use bare single-character inputs
+ * with no telling attributes, and this recognises them because detection already did.
+ */
+function focusIsInField(field: OtpField): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLInputElement && field.elements.includes(active);
+}
 
 type Verdict = "trusted" | "unverified" | "mismatch";
 
@@ -143,7 +208,7 @@ function showPill(
   payload: CodePayload,
   verdict: Verdict,
   field: OtpField,
-  onDone: () => void,
+  { onDone, onAlwaysFill }: { onDone: () => void; onAlwaysFill: () => void },
 ): Pill {
   const host = document.createElement("div");
   host.style.cssText = "all: initial; position: fixed; z-index: 2147483647;";
@@ -187,6 +252,7 @@ function showPill(
     // fillOtpField, which made it the only path a code could be silently lost on.
     if (fillOtpField(field, payload.code)) {
       chrome.runtime.sendMessage({ type: "fill-result", ok: true }).catch(() => {});
+      if (always.checked) onAlwaysFill();
       cleanup();
       return;
     }
@@ -214,10 +280,23 @@ function showPill(
   failure.hidden = true;
   failure.textContent = "This field would not accept the code. Copy it across by hand.";
 
+  // Offered only where it is safe to offer. On a domain mismatch this is exactly the
+  // decision a phishing page wants the user to make once and never revisit.
+  const alwaysRow = document.createElement("label");
+  alwaysRow.className = "always";
+  const always = document.createElement("input");
+  always.type = "checkbox";
+  alwaysRow.append(always, document.createTextNode(` Always fill on ${location.hostname}`));
+  alwaysRow.hidden = verdict === "mismatch";
+
   row.append(code, fill, dismiss);
-  card.append(row, failure);
+  card.append(row, alwaysRow, failure);
   root.append(card);
   document.documentElement.append(host);
+
+  // The hands are already on the keyboard when a code arrives; reaching for the mouse to
+  // accept it is the wrong ergonomic.
+  fill.focus();
 
   const timer = setTimeout(cleanup, CODE_TTL_MS);
 
@@ -246,6 +325,12 @@ const PILL_CSS = `
 .warning { margin: 0 0 8px; color: #ffd60a; font-size: 12.5px; }
 .failure { margin: 8px 0 0; color: #ffd60a; font-size: 12.5px; }
 .failure[hidden] { display: none; }
+.always {
+  display: flex; align-items: center; gap: 6px; margin: 9px 0 0;
+  color: #98989d; font-size: 12px; cursor: pointer; user-select: none;
+}
+.always[hidden] { display: none; }
+.always input { margin: 0; accent-color: #0a84ff; }
 .row { display: flex; align-items: center; gap: 10px; }
 .code {
   font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;

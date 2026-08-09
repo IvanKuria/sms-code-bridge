@@ -38,6 +38,56 @@ test.describe("silent fill (origin-bound codes)", () => {
   });
 });
 
+test.describe("focus-based autofill", () => {
+  // Almost no services send domain-bound codes, so requiring the sigil meant nothing was
+  // ever filled silently. Focus is the signal that actually exists.
+  test("fills silently when the caret is in the field, with no sigil", async ({
+    background,
+    open,
+  }) => {
+    const page = await open("example.com", "/autocomplete");
+    await page.locator("#otp").focus();
+
+    const handled = await deliver(background, page, { code: CODE });
+
+    expect(handled).toBe(true);
+    await expect(page.locator("#otp")).toHaveValue(CODE);
+    expect((await pillHost(page)).present).toBe(false);
+  });
+
+  test("fills silently when focus is in a split-box group", async ({ background, open }) => {
+    // Split boxes carry no telling attributes, so this only works because the check asks
+    // whether the focused element is part of the detected field.
+    const page = await open("example.com", "/split-siblings");
+    await page.locator('.box[data-i="0"]').focus();
+
+    await deliver(background, page, { code: CODE });
+
+    for (let i = 0; i < 6; i++) {
+      await expect(page.locator(`.box[data-i="${i}"]`)).toHaveValue(CODE[i]!);
+    }
+    expect((await pillHost(page)).present).toBe(false);
+  });
+
+  test("a domain mismatch is never filled silently, even when focused", async ({
+    background,
+    open,
+  }) => {
+    // Being focused on the field is exactly what a phishing victim would be doing.
+    const page = await open("example-secure.net", "/autocomplete");
+    await page.locator("#otp").focus();
+
+    await deliver(background, page, {
+      code: CODE,
+      domain: "example.com",
+      originBound: true,
+    });
+
+    await expect(page.locator("#otp")).toHaveValue("");
+    expect((await pillHost(page)).present).toBe(true);
+  });
+});
+
 test.describe("suggestion pill (unverified codes)", () => {
   test("offers rather than fills when there is no sigil", async ({ background, open }) => {
     const page = await open("example.com", "/autocomplete");
