@@ -8,7 +8,11 @@ from the manifest is worse than none.
 Extension name (from the manifest): **SMS Code Bridge**
 Version at time of writing: **0.1.0**
 Category: Productivity / Workflow & Planning
-Privacy policy URL: the hosted copy of [`PRIVACY.md`](../PRIVACY.md)
+Privacy policy URL: **https://ivankuria.github.io/sms-code-bridge/**
+
+That page is generated from [`PRIVACY.md`](../PRIVACY.md) by `.github/workflows/pages.yml` on
+every push that touches it, so the hosted policy cannot drift from the one the code is audited
+against. It requires Pages to be enabled once: **Settings → Pages → Source → GitHub Actions**.
 
 ---
 
@@ -314,10 +318,14 @@ Web Push requires a server holding VAPID keys.
 - [ ] Version bumped from `0.1.0`.
 - [ ] `VAPID_SUBJECT` in `relay/wrangler.toml` set to the publisher's own address, not
       `ikuria@ucsc.edu`.
-- [ ] `SHORTCUT_URL` in `relay/wrangler.toml` replaced with the real iCloud link — it is
-      currently `https://www.icloud.com/shortcuts/PLACEHOLDER`, and the setup page is useless
-      until it is not.
 - [ ] KV namespace `id` in `wrangler.toml` is a real ID, not the placeholder.
+- [ ] The Shortcut served by `GET /shortcut` was rebuilt from the current
+      `shortcut/build-shortcut.mjs`. **Requires macOS** — see `shortcut/README.md` §10. The
+      relay serves a checked-in base64 artefact, so editing the build script does not change
+      what users download. Confirm the served file begins `AEA1`, not `bplist00`.
+- [ ] GitHub Pages enabled (**Settings → Pages → Source → GitHub Actions**) and
+      https://ivankuria.github.io/sms-code-bridge/ loads, since the listing's privacy policy
+      URL points at it.
 - [ ] `extension/.env` points at the production relay and the production VAPID public key, and
       `.env` is not in the uploaded package.
 - [ ] `pnpm test` and `pnpm typecheck` pass.

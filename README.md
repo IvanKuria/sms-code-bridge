@@ -1,4 +1,22 @@
-# SMS Code Bridge
+<div align="center">
+  <img src="assets/logo.svg" width="76" height="76" alt="">
+  <h1>SMS Code Bridge</h1>
+  <p><strong>Your iPhone's verification codes, filled in on Windows.</strong></p>
+  <p>
+    <a href="#setup">Setup</a> ·
+    <a href="#current-status">Status</a> ·
+    <a href="#troubleshooting">Troubleshooting</a> ·
+    <a href="https://ivankuria.github.io/sms-code-bridge/">Privacy</a> ·
+    <a href="docs/DESIGN.md">Design</a>
+  </p>
+  <p>
+    <img alt="MIT licensed" src="https://img.shields.io/badge/license-MIT-blue.svg">
+    <img alt="Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg">
+    <img alt="Node 22+" src="https://img.shields.io/badge/node-%E2%89%A522-5FA04E.svg">
+  </p>
+</div>
+
+---
 
 Brings the SMS verification code that just arrived on your iPhone into Chrome on Windows, and
 fills it into the field waiting for it. It is the macOS Continuity autofill experience for
@@ -10,9 +28,11 @@ Forwarding only reaches Apple devices, Microsoft Phone Link shows the message bu
 integration, every OTP-autofill extension on the market sources from Android or email, and
 Chrome's own cross-device WebOTP requires an Android phone. That gap is what this fills.
 
-**Status: pre-implementation-complete.** The code in this repo is written, but the two spikes
-that gate it have not been run. See [Current status](#current-status) before you rely on any of
-it.
+**Status: works end to end; not yet validated.** The full path — iPhone SMS → Shortcuts
+automation → relay → Web Push → autofill in Chrome on Windows — has been exercised
+successfully against a real sign-in. What has *not* happened is measurement: the two spikes
+that gate the product, above all whether the automation fires on a **locked** phone, are still
+unrun. See [Current status](#current-status) before relying on any of it.
 
 ## Why the architecture looks like this
 
@@ -93,7 +113,8 @@ Roughly 1–2 seconds from SMS to fillable, on the assumption Spike 1 is yet to 
 
 | Path | What it is |
 |---|---|
-| `extension/` | The MV3 extension. TypeScript, WXT, React popup. Service worker owns the pairing ID, push subscription and code TTL; the content script does field detection and filling. |
+| `extension/` | The MV3 extension. TypeScript, WXT, React popup and onboarding page. Service worker owns the pairing ID, push subscription and code TTL; the content script does field detection and filling. |
+| `assets/` | Logo source (`logo.svg`, plus an optically corrected `logo-16.svg`) and two generators: `render-icons.mjs` rasterizes the icons into `extension/public/icon/` (`pnpm icons`), and `render-privacy.mjs` builds the hosted privacy page from `PRIVACY.md` (`pnpm privacy`). |
 | `relay/` | One Cloudflare Worker (Hono). `POST /pair`, `DELETE /pair`, `POST /code`, `GET /setup`, `GET /health`. Also serves the mobile onboarding page. |
 | `shared/` | `otp.ts` (reference code extraction) and `fields.ts` (OTP field detection and verified filling), plus their tests. Imported by both the relay and the extension. |
 | `shortcut/` | `README.md` is the source of truth for the iPhone side. `.shortcut` files are signed plist blobs, not text, so there is nothing to check in — the document is the build spec. |
@@ -119,9 +140,10 @@ cd relay
 npx wrangler kv namespace create PAIRINGS
 ```
 
-Paste the printed `id` into `relay/wrangler.toml`, replacing
-`PLACEHOLDER_RUN_WRANGLER_KV_NAMESPACE_CREATE`. This namespace holds the pairing-ID → push
-subscription map and nothing else.
+Paste the printed `id` into `relay/wrangler.toml`, replacing the `id` under
+`[[kv_namespaces]]`. That file is checked in holding *this* project's namespace id, which
+your account cannot write to — a fork that skips this step deploys and then fails every
+pairing. The namespace holds the pairing-ID → push subscription map and nothing else.
 
 **3. Generate VAPID keys**
 
@@ -140,9 +162,8 @@ npx wrangler secret put VAPID_PRIVATE_KEY
 npx wrangler secret put VAPID_PUBLIC_KEY
 ```
 
-While you are in `wrangler.toml`, set `VAPID_SUBJECT` to your own `mailto:` and `SHORTCUT_URL`
-to the iCloud link for your build of the shortcut (see `shortcut/README.md`); both currently
-hold this project's placeholder values.
+While you are in `wrangler.toml`, set `VAPID_SUBJECT` to your own `mailto:` — it currently
+holds this project's address, and push services use it to contact whoever is sending.
 
 **5. Deploy the Worker**
 
@@ -188,10 +209,26 @@ still holds the old origin and its `fetch` calls will be blocked.
 
 **9. The phone**
 
-Build the shortcut by hand from `shortcut/README.md` — action list, regex, JSON body and the
-import question are all specified there — then create the Message automation as described in
-its §8. Apple permits distributing a shortcut via iCloud link but not an automation, so this
-step is manual and cannot be engineered around.
+Open the extension popup and hit **Open the setup guide** — the walkthrough that opens on
+first install covers the rest. It shows a QR code; scanning it with the iPhone camera opens
+`/setup` on the phone with the pairing code already embedded, which then hands over the
+Shortcut as a download.
+
+Two things about that last leg are worth knowing before you start:
+
+- **The Shortcut alone does nothing.** A Message automation is what runs it. Apple permits
+  distributing a shortcut but *not* an automation, so creating it is manual, once per phone,
+  and cannot be engineered around. It is the step people skip. The generated Shortcut carries
+  the instructions in a Comment action for exactly this reason.
+- **The first text asks permission.** iOS shows a one-time prompt the first time the
+  automation runs — tap **Allow**. Every run after that is hands-off.
+
+`shortcut/README.md` remains the source of truth for what the Shortcut *is*: it specifies the
+action list, the regex, the JSON body and the import question, and `shortcut/build-shortcut.mjs`
+emits exactly that. **Rebuilding it requires macOS** — the script shells out to `plutil`, and
+signing needs Apple's `shortcuts` CLI — so the signed artefact is checked into the relay as
+base64 (`relay/src/shortcut-asset.ts`) and served from `GET /shortcut`. Editing the build
+script on Windows is fine; regenerating the artefact is not.
 
 ## Development
 
@@ -208,6 +245,16 @@ cd relay && npx wrangler dev    # relay locally
 `fields.test.ts` for field detection against DOM fixtures.
 
 ## Current status
+
+**It works, once, unmeasured.** On 2026-08-08 a real sign-in to Credit Karma completed in
+Chrome on Windows using a code texted to an iPhone, with no manual copying. That establishes
+the path is real; it establishes nothing about how often it works. The trial is logged in
+[docs/SPIKES.md](docs/SPIKES.md) under *Field log*, explicitly as an anecdote.
+
+One surprise came out of it and is worth repeating here, because it looks exactly like a
+broken product: **iOS demands a one-time permission tap the first time the automation runs.**
+Onboarding now warns about this in all three places a user might be looking — the extension
+walkthrough, the phone setup page, and a Comment action inside the Shortcut itself.
 
 **Neither of the two blocking spikes in [docs/SPIKES.md](docs/SPIKES.md) has been run.** Both
 are recorded as `not started`. The production code exists ahead of them, which inverts the order
@@ -266,3 +313,46 @@ regex cannot, because stripping separators is another action.
 **The pairing ID is a bearer token.** Shortcuts cannot HMAC, so there is no better authenticator
 available on the phone side. Mitigated by 120 bits of entropy, TLS only, per-pairing-ID rate
 limiting, and one-tap rotation that genuinely revokes (`DELETE /pair`).
+
+## Troubleshooting
+
+Work down this list in order — it is sorted by how often each cause is the real one.
+
+**No codes arrive at all, and nothing has ever worked.**
+
+1. **Did you create the automation?** Adding the Shortcut is not enough; the Message
+   automation is what runs it. Shortcuts → Automation tab → there should be a Message
+   automation listed. This is the single most common cause.
+2. **Was there a permission prompt on the phone?** The first run asks once. If it is sitting
+   unanswered, nothing downstream happens.
+3. **Run the Shortcut manually.** Shortcuts → tap **OTP Bridge**. This tests the pairing ID
+   and the network leg with no automation involved. Success means the problem is the trigger,
+   not the bridge.
+4. **Does the message contain the word `code`?** That is the automation's trigger, *and* the
+   Shortcut's regex needs a keyword within 25 characters before the digits. `Your PIN is 1234`
+   passes; `123456 is your number` does not.
+5. **Is the browser running and paired?** The relay pushes to a stored subscription. Open the
+   popup — the dot beside the title is green only once a code has actually arrived.
+
+**It worked before and stopped.**
+
+Most likely the push subscription rotated. Open the popup; if it still shows paired, rotate the
+pairing code and paste the new value into the Shortcut's first Text action. See the caveat in
+[Known limitations](#known-limitations) — the extension cannot currently detect this state on
+its own.
+
+**The code arrives as a notification instead of filling.**
+
+Expected when no OTP field is on screen, when the tab has no content script (`chrome://` pages,
+the PDF viewer), or when the field was not recognised. `GET /test` on the relay carries both
+common field shapes and a form that posts a code exactly as the phone does — the fastest way to
+tell a detection problem from a delivery problem.
+
+**"This browser has no push service."**
+
+Chrome's Push API is FCM, and de-googled Chromium forks (ungoogled-chromium, Helium, Thorium)
+remove it. Nothing can be done from this side. Chrome, Edge, Brave and Vivaldi all work.
+
+## License
+
+[MIT](LICENSE). © 2026 Ivan Kuria.

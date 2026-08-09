@@ -1,0 +1,25 @@
+<!--
+  The 16px variant — the toolbar icon, and the smallest thing a Web Store reviewer sees.
+
+  Three dots, not four, and full-bleed rather than inset. Scaling logo.svg to 16 leaves a
+  1.1px gap between dots, which antialiasing closes into a solid bar; dropping one dot and
+  reclaiming the inset buys a 2.0px gap, which survives. Optical correction at small sizes
+  is normal icon practice — the two variants are never seen side by side.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"
+     role="img" aria-label="SMS Code Bridge">
+  <defs>
+    <linearGradient id="face" x1="8" y1="0" x2="8" y2="16" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2E95FF"/>
+      <stop offset="1" stop-color="#0A6FE8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="16" height="16" rx="3.75" fill="url(#face)"/>
+
+  <g fill="#fff">
+    <circle cx="2.8" cy="8" r="1.6"/>
+    <circle cx="8" cy="8" r="1.6"/>
+    <circle cx="13.2" cy="8" r="1.6"/>
+  </g>
+</svg>

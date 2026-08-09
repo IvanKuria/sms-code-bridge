@@ -1,0 +1,414 @@
+/*
+ * Onboarding page styling.
+ *
+ * Same token names and the same palette as the popup, so the two surfaces read as one
+ * product; the values differ only where a full page needs more room than a 320px panel.
+ * Deliberately flat — one accent, hairline borders, no shadows beyond the sticky aside.
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfd;
+  --surface: #fff;
+  --fg: #1c1c1e;
+  --muted: #6e6e73;
+  --line: #e6e6e9;
+  --accent: #0071e3;
+  --accent-weak: rgba(0, 113, 227, 0.09);
+  --good: #12805c;
+  --good-weak: rgba(18, 128, 92, 0.1);
+  --warn: #9a5b00;
+  --warn-weak: rgba(154, 91, 0, 0.09);
+  --radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101012;
+    --surface: #191a1c;
+    --fg: #f5f5f7;
+    --muted: #98989d;
+    --line: #2e2e31;
+    --accent: #0a84ff;
+    --accent-weak: rgba(10, 132, 255, 0.14);
+    --good: #32d29b;
+    --good-weak: rgba(50, 210, 155, 0.12);
+    --warn: #ffd60a;
+    --warn-weak: rgba(255, 214, 10, 0.11);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0 24px 96px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.page {
+  max-width: 1040px;
+  margin-inline: auto;
+}
+
+/* ------------------------------------------------------------------ masthead */
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 0 40px;
+}
+
+.masthead img {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.masthead span {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.hero {
+  margin-bottom: 44px;
+}
+
+h1 {
+  font-size: clamp(28px, 3.6vw, 38px);
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.12;
+  margin: 0 0 12px;
+  max-width: 18ch;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 17px;
+  margin: 0;
+  max-width: 54ch;
+}
+
+/* ------------------------------------------------------------------- columns */
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 56px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+  /* On narrow screens the QR has to come first — it is step one's actual content. */
+  .aside {
+    order: -1;
+    position: static;
+  }
+}
+
+/* --------------------------------------------------------------------- steps */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 16px;
+  padding-bottom: 36px;
+}
+
+/* The rail joining the markers. Drawn on the step, stopped on the last one. */
+.step::before {
+  content: "";
+  position: absolute;
+  left: 13.5px;
+  top: 30px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--line);
+}
+
+.step:last-child::before {
+  display: none;
+}
+
+.marker {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.step.done .marker {
+  background: var(--good);
+  border-color: var(--good);
+  color: #fff;
+}
+
+.step h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 3px 0 8px;
+}
+
+.step p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  max-width: 58ch;
+}
+
+.step p:last-child {
+  margin-bottom: 0;
+}
+
+.step strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* Ordered sub-steps inside a step. Tabular numerals so the dots line up. */
+ol.taps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+ol.taps li {
+  margin-bottom: 5px;
+  padding-left: 2px;
+}
+
+ol.taps li::marker {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A literal on-screen label the user has to find and tap. */
+.ui {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--accent-weak);
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ callouts */
+
+.callout {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.callout.warn {
+  background: var(--warn-weak);
+  border-color: transparent;
+}
+
+.callout .title {
+  display: block;
+  color: var(--fg);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+/* --------------------------------------------------------------- aside panel */
+
+.aside {
+  position: sticky;
+  top: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.aside h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 14px;
+}
+
+.qr {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 1;
+  margin: 0 auto 16px;
+  border-radius: 10px;
+  /* The QR must stay dark-on-white to scan; it cannot follow the page theme. */
+  background: #fff;
+  padding: 10px;
+}
+
+.qr-skeleton {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 1;
+  margin: 0 auto 16px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+}
+
+code.pair {
+  display: block;
+  font: 600 12.5px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  text-align: center;
+  letter-spacing: 0.03em;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+
+/* --------------------------------------------------------------------- forms */
+
+button {
+  display: block;
+  width: 100%;
+  font: 600 14px/1 system-ui, sans-serif;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
+  padding: 11px;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.07);
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+button + button {
+  margin-top: 8px;
+}
+
+/* ------------------------------------------------------------ live verdicts */
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  border: 1px solid var(--line);
+}
+
+.verdict.waiting {
+  color: var(--muted);
+}
+
+.verdict.ok {
+  color: var(--good);
+  background: var(--good-weak);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.verdict.bad {
+  color: var(--warn);
+  background: var(--warn-weak);
+  border-color: transparent;
+}
+
+/* A quiet breathing dot — this panel can sit on screen for minutes. */
+.pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.tick {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* --------------------------------------------------------------------- foot */
+
+.foot {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.foot a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.foot a:hover {
+  text-decoration: underline;
+}

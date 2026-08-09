@@ -14,7 +14,12 @@ export type ToBackground =
   | { type: "otp-field-present" }
   | { type: "get-status" }
   /** Revoke the current pairing ID and mint a new one. */
-  | { type: "rotate-pairing" };
+  | { type: "rotate-pairing" }
+  /** Open the setup walkthrough in a tab. Fire-and-forget; there is no reply. */
+  | { type: "open-onboarding" }
+  /** The pill was rendered, or its Fill button was clicked. Diagnostics only. */
+  | { type: "pill-shown" }
+  | { type: "fill-result"; ok: boolean };
 
 export type ToContent = { type: "code"; payload: CodePayload };
 
@@ -26,4 +31,10 @@ export interface Status {
   lastCodeAt: number | null;
   /** True when this browser has no push service at all (de-googled Chromium forks). */
   pushUnavailable: boolean;
+  /**
+   * The last rotation could not revoke the old pairing ID, so it may still be live on the
+   * relay. Kept separate from `lastError` because a subsequent successful re-pair clears
+   * that field, and this warning must outlive it.
+   */
+  revokeFailed: boolean;
 }

@@ -1,12 +1,15 @@
 import {
+  CLOCK_SKEW_LIMIT_MS,
   CODE_TTL_MS,
   DEDUPE_WINDOW_MS,
   FOCUS_MEMORY_MS,
+  PAIR_CHECK_INTERVAL_MS,
   RELAY_URL,
   VAPID_PUBLIC_KEY,
 } from "../src/config";
 import type { CodePayload, Status, ToBackground } from "../src/messages";
 import { base64UrlToBytes, generatePairingId } from "../src/pairing-id";
+import { bump } from "../src/stats";
 
 interface FillTarget {
   tabId: number;
@@ -36,14 +39,17 @@ export default defineBackground(() => {
   // Chrome rotates push endpoints periodically. Miss this and the extension stops
   // working forever, silently, with no error anywhere the user can see.
   sw.addEventListener("pushsubscriptionchange", (event: Event) => {
-    (event as ExtendableEvent).waitUntil(registerPush({ force: true }));
+    (event as ExtendableEvent).waitUntil(
+      bump("pushsubscriptionchange_fired").then(() => registerPush({ force: true })),
+    );
   });
 
-  chrome.runtime.onInstalled.addListener(() => {
+  chrome.runtime.onInstalled.addListener((details) => {
     void registerPush({ force: false });
+    void maybeOpenOnboarding(details.reason);
   });
   chrome.runtime.onStartup.addListener(() => {
-    void registerPush({ force: false });
+    void registerPush({ force: false }).then(() => verifyPairing({ force: true }));
   });
 
   chrome.runtime.onMessage.addListener((message: ToBackground, sender, sendResponse) => {
@@ -59,6 +65,10 @@ export default defineBackground(() => {
     }
 
     if (message.type === "get-status") {
+      // Opening the popup or the onboarding page is the natural moment to re-check that
+      // the pairing still exists on the relay. Throttled inside verifyPairing, and not
+      // awaited: a slow relay must not make the popup hang on a stale readout.
+      void verifyPairing({ force: false });
       void buildStatus().then(sendResponse);
       return true; // response is async
     }
@@ -70,8 +80,51 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === "open-onboarding") {
+      void openOnboarding();
+      return false;
+    }
+
+    if (message.type === "pill-shown") {
+      void bump("pill_shown");
+      return false;
+    }
+
+    if (message.type === "fill-result") {
+      void bump(message.ok ? "pill_fill_ok" : "pill_fill_failed");
+      return false;
+    }
+
     return false;
   });
+
+  /**
+   * Bumped only when the onboarding page itself changes in a way an existing user needs to
+   * see. Auto-updates are silent and frequent; opening a tab on every one of them is how
+   * an extension earns one-star reviews, so the tab opens on a fresh install and then only
+   * when this number moves.
+   */
+  const ONBOARDING_REVISION = 1;
+
+  function openOnboarding(): Promise<unknown> {
+    return chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") });
+  }
+
+  async function maybeOpenOnboarding(
+    reason: chrome.runtime.OnInstalledReason,
+  ): Promise<void> {
+    if (reason !== "install" && reason !== "update") return;
+
+    const { onboardingRevision } = await chrome.storage.local.get("onboardingRevision");
+    await chrome.storage.local.set({ onboardingRevision: ONBOARDING_REVISION });
+
+    // A fresh install always gets the walkthrough. An update gets it only if the user has
+    // not already seen this revision — which also covers users who installed before
+    // onboarding existed, since they have no stored revision at all.
+    if (reason === "install" || onboardingRevision !== ONBOARDING_REVISION) {
+      await openOnboarding();
+    }
+  }
 
   /**
    * Revoking matters more than minting: if the old ID is left alive on the relay, the
@@ -80,39 +133,120 @@ export default defineBackground(() => {
   async function rotatePairing(): Promise<void> {
     const { pairingId: old } = await chrome.storage.local.get("pairingId");
 
+    let revoked = true;
+
     if (typeof old === "string") {
       try {
-        await fetch(`${RELAY_URL}/pair`, {
+        const res = await fetch(`${RELAY_URL}/pair`, {
           method: "DELETE",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ pairingId: old }),
         });
+        // fetch rejects only on network failure. A 429 from the pairing rate limiter, or
+        // any other non-2xx, is a *failed* revocation that would otherwise be read as
+        // success and leave the old ID live in KV for a year.
+        revoked = res.ok;
       } catch {
-        // Revocation is best-effort; carry on and mint the new ID regardless, but say so.
-        await chrome.storage.local.set({
-          lastError: "Could not revoke the old pairing code — it may still be active.",
-        });
+        revoked = false;
       }
     }
 
     await chrome.storage.local.remove("pairingId");
     await registerPush({ force: false });
+
+    // Written AFTER registerPush, not before. registerPush clears lastError on success, so
+    // setting this first meant the warning was reliably erased a few lines later and the
+    // user was told nothing — while PRIVACY.md promised the opposite. Kept in its own key
+    // so a later successful re-pair cannot silently swallow it either.
+    await bump(revoked ? "rotate_ok" : "rotate_revoke_failed");
+    await chrome.storage.local.set({ revokeFailed: !revoked });
+  }
+
+  /**
+   * Ask the relay whether this pairing still exists.
+   *
+   * The failure this closes: when a push service reports a subscription gone, the relay
+   * deletes the pairing and returns 410 to the *phone*, which ignores every response by
+   * design. Nothing ever told the browser, so it went on showing a healthy pairing while
+   * every code after that 404'd. Re-registering did not help either, because a non-forced
+   * registerPush reuses the same dead endpoint from getSubscription().
+   *
+   * So: if the relay says the pairing is gone, tear down the local subscription and build
+   * a fresh one rather than re-uploading the corpse.
+   */
+  async function verifyPairing({ force }: { force: boolean }): Promise<void> {
+    try {
+      const { pairingId, lastPairCheckAt } = await chrome.storage.local.get([
+        "pairingId",
+        "lastPairCheckAt",
+      ]);
+      if (typeof pairingId !== "string") return;
+
+      const last = typeof lastPairCheckAt === "number" ? lastPairCheckAt : 0;
+      if (!force && Date.now() - last < PAIR_CHECK_INTERVAL_MS) return;
+
+      const res = await fetch(`${RELAY_URL}/pair?p=${encodeURIComponent(pairingId)}`);
+      if (!res.ok) return; // Rate limited or relay trouble; not evidence either way.
+
+      await chrome.storage.local.set({ lastPairCheckAt: Date.now() });
+
+      const { paired } = (await res.json()) as { paired?: boolean };
+      if (paired === true) return;
+
+      await bump("pair_found_dead");
+      await registerPush({ force: true });
+    } catch {
+      // Offline. Says nothing about the pairing, so leave the state alone.
+    }
   }
 
   async function handlePush(event: PushEvent): Promise<void> {
-    const payload = parsePayload(event.data);
-    if (!payload) return;
+    await bump("push_received");
 
-    if (Date.now() - payload.sentAt > CODE_TTL_MS) return;
+    const payload = parsePayload(event.data);
+    if (!payload) {
+      await bump("push_dropped_unparseable");
+      return;
+    }
+
+    // `age` is this machine's clock minus the relay's. A push that has genuinely been in
+    // flight for over a minute is rare; an age of minutes, or a negative one, almost
+    // always means the two clocks disagree rather than that the code is old.
+    //
+    // Dropping those silently was fatal and undiagnosable: a PC running a few minutes fast
+    // (dual boot with the RTC on local time, an unsynced VM, a dead CMOS battery) lost
+    // every single code at this line, wrote nothing, and looked exactly like an iPhone
+    // automation that never fired. Deliver them, and say so.
+    const age = Date.now() - payload.sentAt;
+
+    if (Math.abs(age) > CLOCK_SKEW_LIMIT_MS) {
+      await bump("push_clock_skew");
+      await chrome.storage.local.set({
+        lastError:
+          "This computer's clock is out of step with the server, so codes cannot be " +
+          "checked for freshness. Turn on automatic time syncing in Windows settings.",
+      });
+    } else if (age > CODE_TTL_MS) {
+      // Old, but not so old that the clock is implicated. Genuinely stale; refuse it.
+      await bump("push_dropped_expired");
+      return;
+    }
 
     prunePayloads();
-    if (recentCodes.has(payload.code)) return;
+    if (recentCodes.has(payload.code)) {
+      await bump("push_dropped_duplicate");
+      return;
+    }
     recentCodes.set(payload.code, Date.now());
 
-    await chrome.storage.local.set({ lastCodeAt: Date.now(), lastError: null });
+    // Do not clear lastError here unconditionally: a clock-skew warning set moments ago is
+    // still true, and the whole point of it is that delivery succeeding does not mean the
+    // freshness check is working.
+    await chrome.storage.local.set({ lastCodeAt: Date.now() });
 
     const delivered = await deliverToTab(payload);
     if (!delivered) {
+      await bump("notification_fallback_shown");
       pendingCode = payload;
       await notifyFallback(payload);
     }
@@ -151,15 +285,22 @@ export default defineBackground(() => {
     const target = await recallTarget();
 
     if (target && Date.now() - target.at < FOCUS_MEMORY_MS) {
-      if (await sendCode(target.tabId, target.frameId, payload)) return true;
+      if (await sendCode(target.tabId, target.frameId, payload)) {
+        await bump("delivered_via_focus_target");
+        return true;
+      }
     }
 
     const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (active?.id !== undefined) {
       // No frameId: let every frame in the tab decide for itself.
-      if (await sendCode(active.id, undefined, payload)) return true;
+      if (await sendCode(active.id, undefined, payload)) {
+        await bump("delivered_via_active_tab");
+        return true;
+      }
     }
 
+    await bump("no_target_found");
     return false;
   }
 
@@ -175,9 +316,11 @@ export default defineBackground(() => {
         { type: "code", payload },
         options as chrome.tabs.MessageSendOptions,
       )) as { handled?: boolean } | undefined;
+      if (res?.handled !== true) await bump("send_not_handled");
       return res?.handled === true;
     } catch {
       // No content script in that tab (chrome:// page, PDF viewer, tab closed).
+      await bump("send_failed_no_content_script");
       return false;
     }
   }
@@ -208,6 +351,7 @@ export default defineBackground(() => {
   async function registerPush({ force }: { force: boolean }): Promise<void> {
     try {
       if (!VAPID_PUBLIC_KEY) {
+        await bump("pair_failed_no_vapid");
         await chrome.storage.local.set({ lastError: "Missing VAPID public key in build." });
         return;
       }
@@ -239,13 +383,19 @@ export default defineBackground(() => {
           .json()
           .then((body: unknown) => (body as { error?: string })?.error ?? "")
           .catch(() => "");
+        await bump("pair_failed_relay");
         await chrome.storage.local.set({
           lastError: `Relay refused pairing (${res.status}${reason ? `: ${reason}` : ""}).`,
         });
         return;
       }
 
-      await chrome.storage.local.set({ pairingId, lastError: null });
+      await bump("pair_ok");
+      await chrome.storage.local.set({
+        pairingId,
+        lastError: null,
+        lastPairCheckAt: Date.now(),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
 
@@ -254,6 +404,7 @@ export default defineBackground(() => {
       // message ("Registration failed - push service error") sends people hunting for a
       // network problem that does not exist.
       const noPushService = /push service|registration failed/i.test(message);
+      await bump(noPushService ? "pair_failed_no_push_service" : "pair_failed_network");
 
       await chrome.storage.local.set({
         lastError: noPushService
@@ -268,12 +419,13 @@ export default defineBackground(() => {
   }
 
   async function buildStatus(): Promise<Status & { pendingCode: CodePayload | null }> {
-    const { pairingId, lastError, lastCodeAt, pushUnavailable } =
+    const { pairingId, lastError, lastCodeAt, pushUnavailable, revokeFailed } =
       await chrome.storage.local.get([
         "pairingId",
         "lastError",
         "lastCodeAt",
         "pushUnavailable",
+        "revokeFailed",
       ]);
 
     const id = (pairingId as string | undefined) ?? null;
@@ -288,6 +440,7 @@ export default defineBackground(() => {
       lastError: (lastError as string | undefined) ?? null,
       lastCodeAt: (lastCodeAt as number | undefined) ?? null,
       pushUnavailable: pushUnavailable === true,
+      revokeFailed: revokeFailed === true,
       pendingCode,
     };
   }

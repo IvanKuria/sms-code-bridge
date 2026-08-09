@@ -1,0 +1,61 @@
+# Publishes the privacy policy to GitHub Pages.
+#
+# The Chrome Web Store requires a publicly reachable privacy policy URL on the listing.
+# That page is generated from PRIVACY.md rather than written separately, so the hosted
+# policy and the audited one cannot disagree.
+#
+# One-time setup in the repository: Settings → Pages → Source → "GitHub Actions".
+name: Pages
+
+on:
+  push:
+    branches: [master, main]
+    # Redeploy only when the policy or the way it is rendered actually changes.
+    paths:
+      - PRIVACY.md
+      - assets/render-privacy.mjs
+      - assets/logo.svg
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a half-finished deploy; let it settle and run the next one after.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Render PRIVACY.md
+        run: pnpm privacy
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

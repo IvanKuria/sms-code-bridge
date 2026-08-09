@@ -9,9 +9,52 @@ fixture corpus and tells us whether the silent-fill path is real.
 
 | Spike | Question | Status | Date run | Verdict |
 |---|---|---|---|---|
-| 1 | Does the automation fire on a locked iPhone? | not started | | |
+| 1 | Does the automation fire on a locked iPhone? | not started — see field log below | | |
 | 2 | Does Chrome force a notification on every push? | not started | | |
 | 3 | What shapes do real OTP fields take? | not started | | |
+
+---
+
+## Field log — unstructured, pre-spike
+
+Real uses of the product that happened outside the spike protocol. These are **anecdotes,
+not measurements**: no controlled state, no repetition, no latency recorded. They are worth
+keeping because they establish that the path works end to end at all, and because the
+surprises in them are cheap to fix and expensive to discover late. They do not satisfy
+Spike 1 and must not be cited as if they did.
+
+### 2026-08-08 — first successful end-to-end run
+
+Signed in to **Credit Karma** on Chrome/Windows using a code texted to the iPhone, with no
+manual copying and no interaction on the phone at sign-in time.
+
+| Field | Value |
+|---|---|
+| Outcome | Code arrived and filled; sign-in completed |
+| Interaction at sign-in | None |
+| Phone state | Not recorded — assume unlocked/in-hand unless confirmed otherwise |
+| Latency | Not recorded |
+| iOS version | Not recorded |
+| Trials | 1 |
+
+**The surprise, and the reason this entry exists:** on the *first* run of the automation,
+iOS demanded a one-time permission tap (**Allow**) before the shortcut would execute. Every
+run after that was hands-off.
+
+Two consequences, both already actioned:
+
+1. **Onboarding must warn about it.** A user who sends a test text, sees nothing happen, and
+   does not realise a prompt is waiting on the phone will conclude the product is broken.
+   This is now called out on the relay setup page, in the extension onboarding page, and in
+   the Comment action carried inside the shortcut itself.
+2. **Spike 1's protocol needs an extra column.** "Interaction required" as specified does not
+   distinguish *first-ever run* from *steady state*, and the difference is the whole product.
+   Trial 1 of state A must be treated as a distinct case, and the permission grant must be
+   completed before states B–E are run at all — otherwise every state B block would measure
+   the consent prompt rather than lock-screen behaviour.
+
+Whether the automation fires with the phone **locked** remains completely untested. That is
+still the question that can kill the product, and this anecdote says nothing about it.
 
 ---
 
@@ -72,6 +115,13 @@ misconfiguration shows up as a whole bad block rather than scattered noise.
 
 "Interaction required" is the field that decides the product. An automation that fires 100%
 of the time *after a tap* is the 50–90% branch, not the ≥90% branch.
+
+**Grant the first-run permission before you start counting.** iOS demands a one-time
+**Allow** tap the first time a given automation executes (observed 2026-08-08, see the field
+log above). That tap is a property of the install, not of the lock state, so run one throwaway
+message with the phone unlocked, clear the prompt, and only then begin state A. Counting it
+as a trial would put a false "interaction required" in every state's first row and drag all
+five states below threshold for a reason that has nothing to do with what is being measured.
 
 ### Also record (once each, not per trial)
 

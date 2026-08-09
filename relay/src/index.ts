@@ -12,6 +12,11 @@ interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+/** Workers Analytics Engine. Optional so tests and local dev run without the binding. */
+interface AnalyticsDataset {
+  writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void;
+}
+
 export interface Env {
   PAIRINGS: KVNamespace;
   VAPID_SUBJECT: string;
@@ -19,6 +24,62 @@ export interface Env {
   VAPID_PRIVATE_KEY: string;
   CODE_LIMITER?: RateLimiter;
   PAIR_LIMITER?: RateLimiter;
+  OPS?: AnalyticsDataset;
+}
+
+/**
+ * Counts the outcome of a request we are already handling. One data point per request.
+ *
+ * The privacy line this must not cross: nothing here may identify a user or a device.
+ * No pairing ID (it is a bearer token), no IP, no country, no colo, no User-Agent, no code,
+ * no message body, no push endpoint URL, and nothing unique per request. What is left is a
+ * counter: which route, what happened, and for pushes how long the push service took.
+ *
+ * That is a real if small concession — a timestamped row saying "a code was relayed" now
+ * persists for the dataset's 90-day retention, where previously the relay kept nothing at
+ * all. It is unattributable, and it is what makes failure rates visible instead of guessed.
+ * PRIVACY.md documents it in those terms.
+ *
+ * Deliberately not wrapped in waitUntil: writeDataPoint is fire-and-forget and must never
+ * be able to fail a request.
+ */
+function track(
+  env: Env,
+  route: string,
+  outcome: string,
+  extra: { blobs?: string[]; doubles?: number[] } = {},
+): void {
+  try {
+    env.OPS?.writeDataPoint({
+      indexes: [route],
+      blobs: [outcome, ...(extra.blobs ?? [])],
+      doubles: extra.doubles ?? [],
+    });
+  } catch {
+    // Metrics are never worth a 500.
+  }
+}
+
+/**
+ * Buckets a push endpoint into a coarse provider class.
+ *
+ * This is the dimension that would have caught the `jmt17.google.com` allowlist bug in
+ * hours rather than never. It is a fixed, small enumeration by construction, so it cannot
+ * carry the endpoint's unique path.
+ */
+function pushHostClass(endpoint: string): string {
+  let host: string;
+  try {
+    host = new URL(endpoint).hostname.toLowerCase();
+  } catch {
+    return "unparseable";
+  }
+  if (host.endsWith(".googleapis.com") || host === "fcm.googleapis.com") return "googleapis";
+  if (host.endsWith(".google.com")) return "google_other";
+  if (host.endsWith(".push.services.mozilla.com")) return "mozilla";
+  if (host.endsWith(".notify.windows.com")) return "windows";
+  if (host.endsWith(".push.apple.com")) return "apple";
+  return "other";
 }
 
 /** A pairing survives a year of disuse before it is forgotten. */
@@ -61,22 +122,61 @@ app.get("/setup", (c) => {
  */
 app.post("/pair", async (c) => {
   const limited = await rateLimited(c.env.PAIR_LIMITER, clientKey(c.req.raw));
-  if (limited) return c.json({ error: "rate_limited" }, 429);
+  if (limited) {
+    track(c.env, "pair", "rate_limited");
+    return c.json({ error: "rate_limited" }, 429);
+  }
 
   const body = await safeJson(c.req.raw);
-  if (!body) return c.json({ error: "bad_request" }, 400);
+  if (!body) {
+    track(c.env, "pair", "bad_request");
+    return c.json({ error: "bad_request" }, 400);
+  }
 
   const id = normalizePairingId(body["pairingId"]);
-  if (!id) return c.json({ error: "bad_pairing_id" }, 400);
+  if (!id) {
+    track(c.env, "pair", "bad_pairing_id");
+    return c.json({ error: "bad_pairing_id" }, 400);
+  }
 
   const subscription = parseSubscription(body["subscription"]);
-  if (!subscription) return c.json({ error: "bad_subscription" }, 400);
+  if (!subscription) {
+    track(c.env, "pair", "bad_subscription");
+    return c.json({ error: "bad_subscription" }, 400);
+  }
 
   await c.env.PAIRINGS.put(pairingKey(id), JSON.stringify(subscription), {
     expirationTtl: PAIRING_TTL_SECONDS,
   });
 
+  track(c.env, "pair", "ok", { blobs: [pushHostClass(subscription.endpoint)] });
   return c.json({ ok: true }, 200);
+});
+
+/**
+ * Is this pairing still alive?
+ *
+ * Exists because a pairing can die without either end noticing. When a push service
+ * reports a subscription gone, `POST /code` deletes the KV entry — but it reports that to
+ * the *phone*, and the Shortcut ignores every response by design. The browser is never
+ * told, so it keeps showing a healthy pairing while every subsequent code 404s. This
+ * endpoint is how the extension closes that loop.
+ *
+ * Knowing the ID is the authorisation, the same bearer model as `/code` and `DELETE /pair`.
+ * It discloses one bit (exists / does not) to someone who already holds the token, so it
+ * grants nothing new. It deliberately does NOT return the stored subscription.
+ */
+app.get("/pair", async (c) => {
+  const limited = await rateLimited(c.env.PAIR_LIMITER, clientKey(c.req.raw));
+  if (limited) return c.json({ error: "rate_limited" }, 429);
+
+  const id = normalizePairingId(c.req.query("p"));
+  if (!id) return c.json({ error: "bad_pairing_id" }, 400);
+
+  const stored = await c.env.PAIRINGS.get(pairingKey(id));
+  track(c.env, "pair_check", stored ? "alive" : "dead");
+
+  return c.json({ paired: stored !== null }, 200);
 });
 
 /**
@@ -123,13 +223,20 @@ function serveShortcut(c: Context<{ Bindings: Env }>) {
  */
 app.delete("/pair", async (c) => {
   const limited = await rateLimited(c.env.PAIR_LIMITER, clientKey(c.req.raw));
-  if (limited) return c.json({ error: "rate_limited" }, 429);
+  if (limited) {
+    track(c.env, "unpair", "rate_limited");
+    return c.json({ error: "rate_limited" }, 429);
+  }
 
   const body = await safeJson(c.req.raw);
   const id = normalizePairingId(body?.["pairingId"]);
-  if (!id) return c.json({ error: "bad_pairing_id" }, 400);
+  if (!id) {
+    track(c.env, "unpair", "bad_pairing_id");
+    return c.json({ error: "bad_pairing_id" }, 400);
+  }
 
   await c.env.PAIRINGS.delete(pairingKey(id));
+  track(c.env, "unpair", "ok");
   return c.json({ ok: true }, 200);
 });
 
@@ -139,23 +246,46 @@ app.delete("/pair", async (c) => {
  */
 app.post("/code", async (c) => {
   const body = await safeJson(c.req.raw);
-  if (!body) return c.json({ error: "bad_request" }, 400);
+  if (!body) {
+    track(c.env, "code", "bad_request");
+    return c.json({ error: "bad_request" }, 400);
+  }
 
   const id = normalizePairingId(body["pairingId"]);
-  if (!id) return c.json({ error: "bad_pairing_id" }, 400);
+  if (!id) {
+    track(c.env, "code", "bad_pairing_id");
+    return c.json({ error: "bad_pairing_id" }, 400);
+  }
 
   // Keyed on the pairing ID rather than the IP: phones roam between networks, and the
   // thing we actually want to bound is codes-per-user.
   const limited = await rateLimited(c.env.CODE_LIMITER, id);
-  if (limited) return c.json({ error: "rate_limited" }, 429);
+  if (limited) {
+    track(c.env, "code", "rate_limited");
+    return c.json({ error: "rate_limited" }, 429);
+  }
 
   const code = coerceCode(body);
-  if (!code) return c.json({ error: "no_code" }, 400);
+  if (!code) {
+    track(c.env, "code", "no_code");
+    return c.json({ error: "no_code" }, 400);
+  }
+
+  // Which path produced the code. In steady state the Shortcut sends `code` and the
+  // message body never leaves the phone; `message` means someone used the manual test
+  // flow. Worth counting precisely because a rising `message` share would mean bodies are
+  // reaching the relay in numbers, which is a privacy fact we otherwise cannot observe.
+  const source = typeof body["code"] === "string" ? "code_field" : "message_field";
 
   const stored = await c.env.PAIRINGS.get(pairingKey(id));
-  if (!stored) return c.json({ error: "unknown_pairing" }, 404);
+  if (!stored) {
+    track(c.env, "code", "unknown_pairing", { blobs: [source] });
+    return c.json({ error: "unknown_pairing" }, 404);
+  }
 
   const subscription = JSON.parse(stored) as PushSubscription;
+  const hostClass = pushHostClass(subscription.endpoint);
+  const startedAt = Date.now();
 
   const delivered = await push(c.env, subscription, {
     code: code.code,
@@ -165,14 +295,25 @@ app.post("/code", async (c) => {
     ttl: CODE_TTL_SECONDS,
   });
 
+  const pushMs = Date.now() - startedAt;
+
   if (delivered === "gone") {
     // The push service says this subscription is dead. Drop it so the extension is
-    // forced to re-pair rather than silently failing forever.
+    // forced to re-pair rather than silently failing forever. The phone ignores this
+    // response, so `GET /pair` above is what actually informs the browser.
     await c.env.PAIRINGS.delete(pairingKey(id));
+    track(c.env, "code", "subscription_expired", {
+      blobs: [source, hostClass],
+      doubles: [pushMs],
+    });
     return c.json({ error: "subscription_expired" }, 410);
   }
-  if (delivered === "error") return c.json({ error: "push_failed" }, 502);
+  if (delivered === "error") {
+    track(c.env, "code", "push_failed", { blobs: [source, hostClass], doubles: [pushMs] });
+    return c.json({ error: "push_failed" }, 502);
+  }
 
+  track(c.env, "code", "ok", { blobs: [source, hostClass], doubles: [pushMs] });
   return c.json({ ok: true }, 202);
 });
 

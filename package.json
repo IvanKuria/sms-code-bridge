@@ -9,13 +9,21 @@
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "icons": "node assets/render-icons.mjs",
+    "privacy": "node assets/render-privacy.mjs"
   },
   "devDependencies": {
+    "marked": "^18.0.9",
+    "sharp": "^0.33.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "workerd"
+    ]
   }
 }

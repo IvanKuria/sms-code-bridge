@@ -96,6 +96,7 @@ export default defineContentScript({
       pill = null;
       previous?.destroy();
 
+      chrome.runtime.sendMessage({ type: "pill-shown" }).catch(() => {});
       pill = showPill(payload, verdict, field, () => {
         pill = null;
       });
@@ -158,7 +159,7 @@ function showPill(
   if (verdict === "mismatch" && payload.domain) {
     const warning = document.createElement("p");
     warning.className = "warning";
-    warning.textContent = `This code is for ${payload.domain} — you are on ${location.hostname}.`;
+    warning.textContent = `This code is for ${payload.domain}, but you are on ${location.hostname}.`;
     card.append(warning);
   }
 
@@ -173,8 +174,30 @@ function showPill(
   fill.type = "button";
   fill.textContent = verdict === "mismatch" ? "Fill anyway" : "Fill";
   fill.addEventListener("click", () => {
-    fillOtpField(field, payload.code);
-    cleanup();
+    // The result is load-bearing, not decoration. fillOtpField returns false whenever the
+    // write did not land: the field gained a value in the meantime, React replaced the
+    // element between render and click, the code is longer than maxLength, the digit count
+    // does not match the number of boxes, or the read-back showed the framework rejected
+    // the write.
+    //
+    // Discarding it and calling cleanup() unconditionally meant the pill vanished, the
+    // field stayed empty, and the code was gone for good — the background worker had
+    // already been told `handled: true`, so no notification fallback ever fired. Since
+    // `originBound` is always false in v1, this button is the ONLY path that ever reaches
+    // fillOtpField, which made it the only path a code could be silently lost on.
+    if (fillOtpField(field, payload.code)) {
+      chrome.runtime.sendMessage({ type: "fill-result", ok: true }).catch(() => {});
+      cleanup();
+      return;
+    }
+
+    chrome.runtime.sendMessage({ type: "fill-result", ok: false }).catch(() => {});
+
+    // Keep the pill up so the code is still readable and still copyable by hand. Retrying
+    // the same element is pointless — every failure mode above is sticky for this field.
+    fill.disabled = true;
+    fill.textContent = "Could not fill";
+    failure.hidden = false;
   });
 
   const dismiss = document.createElement("button");
@@ -184,8 +207,15 @@ function showPill(
   dismiss.textContent = "✕";
   dismiss.addEventListener("click", cleanup);
 
+  // Rendered hidden and revealed on failure, so the message cannot be missed by someone
+  // who has already looked away from where the button was.
+  const failure = document.createElement("p");
+  failure.className = "failure";
+  failure.hidden = true;
+  failure.textContent = "This field would not accept the code. Copy it across by hand.";
+
   row.append(code, fill, dismiss);
-  card.append(row);
+  card.append(row, failure);
   root.append(card);
   document.documentElement.append(host);
 
@@ -214,6 +244,8 @@ const PILL_CSS = `
 }
 .card.warn { border-color: #ff9f0a; }
 .warning { margin: 0 0 8px; color: #ffd60a; font-size: 12.5px; }
+.failure { margin: 8px 0 0; color: #ffd60a; font-size: 12.5px; }
+.failure[hidden] { display: none; }
 .row { display: flex; align-items: center; gap: 10px; }
 .code {
   font: 600 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;

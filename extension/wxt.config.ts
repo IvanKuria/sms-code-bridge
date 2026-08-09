@@ -24,6 +24,23 @@ function relayHostPermission(): string {
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
+
+  vite: () => ({
+    build: {
+      /**
+       * Chrome discards `<link rel="modulepreload">` inside an extension page as a
+       * "cross-world extension resource mismatch" and logs a warning for each one. Vite
+       * emits them for chunks shared between entrypoints, so the popup and the onboarding
+       * page both warn about the shared React chunk.
+       *
+       * Nothing breaks — the module still loads through its import — but the preload is
+       * dead weight. It exists to hide network latency, and these files are read from
+       * local disk, so switching it off costs nothing measurable and clears the console.
+       */
+      modulePreload: false,
+    },
+  }),
+
   manifest: {
     name: "SMS Code Bridge",
     description:

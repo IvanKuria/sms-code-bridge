@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 
 import type { CodePayload, Status } from "../../src/messages";
+import { clear as clearStats, format, read as readStats } from "../../src/stats";
 
 type FullStatus = Status & { pendingCode: CodePayload | null };
 
@@ -9,6 +10,7 @@ export function App() {
   const [status, setStatus] = useState<FullStatus | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [showPairing, setShowPairing] = useState(false);
 
   const refresh = useCallback(async () => {
     const next = (await chrome.runtime.sendMessage({ type: "get-status" })) as FullStatus;
@@ -42,13 +44,57 @@ export function App() {
     setTimeout(() => setCopied(null), 1500);
   }, []);
 
-  if (!status) return <p className="muted">Loading…</p>;
+  const guide = useCallback(() => {
+    void chrome.runtime.sendMessage({ type: "open-onboarding" });
+    window.close();
+  }, []);
+
+  // Diagnostics are read on demand and copied by hand. There is no code path that sends
+  // them anywhere; see src/stats.ts.
+  const copyDiagnostics = useCallback(async () => {
+    const text = format(await readStats(), chrome.runtime.getManifest().version);
+    await navigator.clipboard.writeText(text);
+    setCopied("diag");
+    setTimeout(() => setCopied(null), 1500);
+  }, []);
+
+  if (!status) {
+    return (
+      <>
+        <Header state="idle" />
+        <p className="muted">Loading…</p>
+      </>
+    );
+  }
+
+  // "Has this ever worked?" is the question that decides the whole layout. Before the
+  // first code the popup is a setup surface; after it, it is a status readout that gets
+  // out of the way.
+  const working = typeof status.lastCodeAt === "number";
+  const state = status.pushUnavailable || status.lastError ? "bad" : working ? "ok" : "idle";
+
+  const pairingBlock = status.paired && status.pairingId && (
+    <>
+      {qr && <img className="qr" src={qr} alt="Setup QR code" />}
+      <code className="pair">{status.pairingId}</code>
+      <button type="button" onClick={() => void copy(status.pairingId!, "pair")}>
+        {copied === "pair" ? "Copied" : "Copy pairing code"}
+      </button>
+    </>
+  );
 
   return (
     <>
-      <h1>SMS Code Bridge</h1>
+      <Header state={state} />
 
       {status.lastError && <p className="error">{status.lastError}</p>}
+
+      {status.revokeFailed && (
+        <p className="error">
+          The previous pairing code could not be revoked, so it may still be active on the
+          relay. Rotate again once you are back online to retire it.
+        </p>
+      )}
 
       {status.pendingCode && (
         <div className="code-card">
@@ -59,56 +105,81 @@ export function App() {
         </div>
       )}
 
-      {status.paired && status.pairingId ? (
+      {status.pushUnavailable ? (
+        <p className="muted">
+          Nothing to set up. This browser cannot receive pushed codes at all.
+        </p>
+      ) : !status.paired ? (
+        <p className="muted">
+          {status.lastError
+            ? "Setup could not complete. See the message above."
+            : "Setting up… if this does not clear, the relay may be unreachable."}
+        </p>
+      ) : working ? (
         <>
-          <p className="muted">
-            Scan this with your iPhone to finish setup. It walks you through adding the
-            Shortcut and the automation.
-          </p>
-          {qr && <img className="qr" src={qr} alt="Setup QR code" />}
-          <code className="pair">{status.pairingId}</code>
-          <button
-            type="button"
-            onClick={() => void copy(status.pairingId!, "pair")}
-          >
-            {copied === "pair" ? "Copied" : "Copy pairing code"}
-          </button>
-          {status.setupUrl && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => void chrome.tabs.create({ url: status.setupUrl! })}
-            >
-              Open setup page
-            </button>
-          )}
+          <p className="status-line">Last code {relative(status.lastCodeAt!)}.</p>
 
-          <hr />
-          <p className="muted">
-            {status.lastCodeAt
-              ? `Last code received ${relative(status.lastCodeAt)}.`
-              : "No codes received yet. Text yourself “code 123456” to test."}
-          </p>
+          {showPairing && <div className="reveal">{pairingBlock}</div>}
+
+          <button type="button" className="secondary" onClick={() => setShowPairing((v) => !v)}>
+            {showPairing ? "Hide pairing code" : "Show pairing code"}
+          </button>
+          <button type="button" className="secondary" onClick={guide}>
+            Setup guide
+          </button>
           <button type="button" className="secondary" onClick={() => void rotate()}>
             Rotate pairing code
           </button>
+
+          <details className="diag">
+            <summary>Diagnostics</summary>
+            <p className="muted">
+              Counters kept on this computer only. Nothing is ever sent anywhere. Copy them
+              into a bug report if something is not working.
+            </p>
+            <button type="button" className="secondary" onClick={() => void copyDiagnostics()}>
+              {copied === "diag" ? "Copied" : "Copy diagnostics"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void clearStats().then(() => refresh())}
+            >
+              Reset counters
+            </button>
+          </details>
         </>
-      ) : status.pushUnavailable ? (
-        // Pointing at the relay here would send people debugging a network problem that
-        // does not exist. Nothing about this is fixable from our side.
-        <p className="muted">
-          Nothing to set up — this browser cannot receive pushed codes at all.
-        </p>
-      ) : status.lastError ? (
-        <p className="muted">Setup could not complete. See the message above.</p>
       ) : (
-        <p className="muted">
-          Setting up… if this does not clear, the relay may be unreachable.
-        </p>
+        <>
+          <p className="muted">
+            Scan this with your iPhone, then add the Shortcut <em>and</em> the automation.
+            No codes arrive until both exist.
+          </p>
+          {pairingBlock}
+          <button type="button" onClick={guide}>
+            Open the setup guide
+          </button>
+        </>
       )}
     </>
   );
 }
+
+function Header({ state }: { state: "ok" | "bad" | "idle" }) {
+  return (
+    <header className="head">
+      <img src="/icon/128.png" alt="" width={18} height={18} />
+      <h1>SMS Code Bridge</h1>
+      <span className={`dot ${state}`} title={LABEL[state]} aria-label={LABEL[state]} />
+    </header>
+  );
+}
+
+const LABEL = {
+  ok: "Working",
+  bad: "Not working",
+  idle: "Not set up yet",
+} as const;
 
 function relative(at: number): string {
   const seconds = Math.round((Date.now() - at) / 1000);

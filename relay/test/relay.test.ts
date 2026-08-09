@@ -216,6 +216,59 @@ describe("DELETE /pair", () => {
   });
 });
 
+describe("GET /pair", () => {
+  it("reports a live pairing", async () => {
+    await pair();
+    const res = await SELF.fetch(`https://relay.test/pair?p=${PAIRING_ID}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ paired: true });
+  });
+
+  it("reports an id that was never registered as dead", async () => {
+    const res = await SELF.fetch("https://relay.test/pair?p=AAAA-BBBB-CCCC-DDDD-EEEE-FFFF");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ paired: false });
+  });
+
+  /**
+   * The whole reason this endpoint exists. A push service reporting the subscription gone
+   * makes /code delete the pairing, but that 410 goes to the phone, which ignores every
+   * response. Without this check the browser never learns it has been unpaired.
+   */
+  it("reports dead after /code drops an expired subscription", async () => {
+    await pair();
+
+    fetchMock
+      .get("https://fcm.googleapis.com")
+      .intercept({ path: () => true, method: "POST" })
+      .reply(410, "");
+
+    const sent = await post("/code", { pairingId: PAIRING_ID, code: "123456" });
+    expect(sent.status).toBe(410);
+
+    const res = await SELF.fetch(`https://relay.test/pair?p=${PAIRING_ID}`);
+    expect(await res.json()).toEqual({ paired: false });
+  });
+
+  it("rejects a malformed pairing id", async () => {
+    const res = await SELF.fetch("https://relay.test/pair?p=nope");
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a missing pairing id", async () => {
+    const res = await SELF.fetch("https://relay.test/pair");
+    expect(res.status).toBe(400);
+  });
+
+  it("never returns the stored subscription", async () => {
+    await pair();
+    const res = await SELF.fetch(`https://relay.test/pair?p=${PAIRING_ID}`);
+    const body = await res.text();
+    expect(body).not.toContain("fcm.googleapis.com");
+    expect(body).not.toContain(SUBSCRIPTION.keys.auth);
+  });
+});
+
 describe("POST /code", () => {
   it("delivers a pre-extracted code", async () => {
     await pair();

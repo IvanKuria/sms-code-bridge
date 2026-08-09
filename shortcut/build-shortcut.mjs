@@ -73,6 +73,36 @@ const OTP_REGEX =
 const IMPORT_QUESTION_TEXT = "Paste your pairing code";
 const SHORTCUT_NAME = "OTP Bridge";
 
+/**
+ * The automation instructions, carried inside the shortcut itself.
+ *
+ * Adding the shortcut does nothing on its own — the Message automation is what runs it —
+ * and that is the single step users most often miss, because Apple does not allow an
+ * automation to be shared or imported. The community-standard workaround is to ship the
+ * instructions as a Comment action, and it is the right call here for a reason specific to
+ * this project: a Comment is inert. It has no runtime cost and no effect on execution, so
+ * it does not spend any of the three-functional-action budget that README §1 protects for
+ * locked-phone reliability.
+ */
+const AUTOMATION_COMMENT = [
+  "⚠️ NOT DONE YET. This shortcut does nothing on its own.",
+  "",
+  "You still have to create the automation that runs it:",
+  "",
+  "1. Shortcuts app → Automation tab",
+  "2. Tap + → Message",
+  '3. Set "Message Contains" to: code',
+  "4. Leave the sender as Any Sender",
+  "5. Choose Run Immediately (not Run After Confirmation)",
+  '6. Pick "OTP Bridge" → Done',
+  "",
+  "The first time a text arrives, iOS asks permission once. Tap Allow.",
+  "After that codes arrive without you touching the phone.",
+  "",
+  "To change your pairing code later, tap the Text action below and paste",
+  "the new one. Nothing else needs to change.",
+].join("\n");
+
 /* ------------------------------------------------------------------ serialization helpers */
 
 /**
@@ -139,6 +169,24 @@ function buildActions(relayUrl) {
   const codeEndpoint = new URL("/code", relayUrl).toString();
 
   return [
+    /**
+     * Row 0 — Comment. Inert; carries the automation setup steps the user must still do.
+     *
+     * Apple permits sharing a shortcut but not an automation (shortcut/README.md §8), so
+     * the instructions travel inside the artefact the user actually receives. A Comment
+     * executes nothing, which is why this does not count against the action budget.
+     *
+     * NOTE: this row sits at index 0, so the import question below binds to ActionIndex 1.
+     * [apple: is.workflow.actions.comment / WFCommentActionText — WFActions.plist strings]
+     * [cherri: actions_std.go identifier "comment", key "WFCommentActionText"]
+     */
+    {
+      WFWorkflowActionIdentifier: "is.workflow.actions.comment",
+      WFWorkflowActionParameters: {
+        WFCommentActionText: AUTOMATION_COMMENT,
+      },
+    },
+
     /**
      * Row 1 — Text. Holds the pairing code and nothing else.
      *
@@ -282,9 +330,11 @@ function buildWorkflow(relayUrl) {
      * never opens the editor during setup, and only action 1 gets a question — the relay URL
      * is baked in on purpose.
      *
-     * The question binds by POSITION (`ActionIndex` 0 = the Text action), not by UUID; there
-     * is no ActionUUID key in this structure. `ParameterKey` must name a real parameter of
-     * that action, hence `WFTextActionText`.
+     * The question binds by POSITION, not by UUID — there is no ActionUUID key in this
+     * structure. `ActionIndex` is 1 because the Comment occupies index 0; if the action
+     * list is ever reordered this number must move with the Text action, or the question
+     * will silently write the user's pairing code into the wrong action's parameter.
+     * `ParameterKey` must name a real parameter of that action, hence `WFTextActionText`.
      * [apple: "ActionIndex" sits immediately beside
      *  -[WFWorkflowImportQuestion initWithAction:parameter:question:defaultState:] in the
      *  WorkflowKit strings]
@@ -294,7 +344,7 @@ function buildWorkflow(relayUrl) {
      */
     WFWorkflowImportQuestions: [
       {
-        ActionIndex: 0,
+        ActionIndex: 1,
         Category: "Parameter",
         DefaultValue: "",
         ParameterKey: "WFTextActionText",

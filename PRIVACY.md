@@ -6,9 +6,17 @@ This policy describes what the SMS Code Bridge Chrome extension, its relay servi
 iPhone Shortcut do with your data. Every claim below is a statement about code in this
 repository and can be checked against it; file references are given so you can.
 
-There are no accounts, no email addresses, no analytics, and no advertising. The design intent
-was to have so little to disclose that the policy could be short and honest, and that is what
-this is.
+There are no accounts, no email addresses, no advertising, and no third-party analytics of any
+kind. Nothing is transmitted from your browser except the pairing registration itself. The
+design intent was to have so little to disclose that the policy could be short and honest, and
+that is what this is.
+
+The one thing that is counted, described in full below: the relay tallies the *outcome* of
+requests it already handles, with no pairing ID, no IP and no code attached.
+
+**Limited Use.** Our use of information received from Google APIs adheres to the
+[Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/limited-use),
+including the Limited Use requirements.
 
 ## What is handled
 
@@ -51,10 +59,29 @@ ID, encrypts the code into a Web Push payload (RFC 8291), sends it to the browse
 service, and returns. The code exists in the Worker's memory for the duration of that one
 request and is then gone.
 
-**Codes are never written to disk and never logged.** There is no `console.log` of a code, no
-storage write on the code path, and no analytics call anywhere in the Worker. The only write
-`POST /code` can perform is a *deletion* — if the push service reports the subscription is dead,
-the pairing is removed so you are forced to re-pair rather than failing silently forever.
+**Codes are never written to disk and never logged.** There is no `console.log` of a code and no
+storage write on the code path. The only write `POST /code` can perform is a *deletion* — if the
+push service reports the subscription is dead, the pairing is removed so you are forced to
+re-pair rather than failing silently forever.
+
+**What the relay does count.** Each request writes one row to a Cloudflare Workers Analytics
+Engine dataset recording only: which endpoint was hit, what the outcome was (`ok`,
+`unknown_pairing`, `rate_limited`, `push_failed`, and so on), a coarse push-provider class
+(`googleapis`, `mozilla`, `apple`…), whether the code arrived pre-extracted or as a raw message,
+and how many milliseconds the push service took. The exclusion list is enforced in `track()` in
+`relay/src/index.ts` and is absolute: **no pairing ID, no IP address, no country or datacentre,
+no User-Agent, no code, no message body, no push endpoint URL, and no per-request unique value.**
+
+Be clear about what this does and does not change. It is not tracking: there is no identifier in
+a row, so rows cannot be grouped into users, sessions, or journeys, and two codes relayed a
+minute apart are indistinguishable from two codes relayed for different people. It also is not
+nothing: a timestamped row saying *a code was relayed* now persists for the dataset's 90-day
+retention, where previously the relay kept no record at all. That is the deliberate trade, made
+so that failure rates are measured rather than guessed.
+
+Workers Logs / `[observability]` is switched **off** on purpose, and `relay/wrangler.toml` says
+why: it captures request URLs, and `GET /setup?p=<pairingId>` carries a live pairing ID in its
+query string.
 
 The design considered the alternative — send an empty push and have the extension fetch the code
 back — and rejected it precisely because it would require storing every code until collected.
@@ -90,6 +117,20 @@ In `chrome.storage.local` (persists across restarts):
 | `pairingId` | your pairing ID |
 | `lastCodeAt` | a timestamp, so the popup can say "last code received 3 min ago" |
 | `lastError` | the most recent error message shown in the popup, if any |
+| `lastPairCheckAt` | when the relay was last asked whether this pairing is still alive |
+| `revokeFailed` | whether the last rotation failed to revoke the old pairing ID |
+| `pushUnavailable` | whether this browser has a push service at all |
+| `onboardingRevision` | which version of the setup walkthrough you have been shown |
+| `stats` | diagnostic counters, described below |
+
+**`stats` never leaves this computer.** It holds integer counts of our own delivery outcomes:
+how many pushes arrived, how many were duplicates, how often a code had no field to fill, how
+often pairing failed and for which reason (`extension/src/stats.ts` lists every key). There is
+no site, no origin, no URL, no code and no per-event timestamp in it, and — this is the part
+that matters — **there is no code path in the extension that transmits it.** No endpoint, no
+beacon, no opt-in switch that would turn sending on. The popup can display the counters and copy
+them to your clipboard; sending them anywhere is something you do by hand, in a bug report,
+having read exactly what you are sending. **Reset counters** clears them.
 
 In `chrome.storage.session` (memory-backed, never written to disk, cleared when the browser
 closes):
@@ -101,7 +142,7 @@ closes):
 `fillTarget` is a tab ID, a frame ID and a timestamp. It is not a URL and not a browsing history.
 
 **Codes are never written to either store.** A code lives in the service worker's memory only:
-the 30-second duplicate-suppression set, and at most one pending code held so the popup can
+the 10-second duplicate-suppression set, and at most one pending code held so the popup can
 offer a Copy button. Both are lost when the service worker restarts, and a code older than 60
 seconds is discarded on sight. That is by design — losing a code is always the correct trade
 against persisting one.
@@ -125,7 +166,9 @@ looking at your screen at that moment (`notifyFallback` in `background.ts`).
 - **Cloudflare** — hosts the relay.
 
 There are no others. No analytics SDK, no error reporting service, no advertising, no data
-brokers. Nothing is sold, rented, or shared, because there is nothing to sell.
+brokers, and no Google Analytics. Nothing is sold, rented, or shared, because there is nothing
+to sell. The request counters described above are written by the relay to Cloudflare, who
+already host it; they add no new recipient.
 
 ## The honest limitation: this is not end-to-end encrypted
 
@@ -155,15 +198,28 @@ your browser. Shortcuts cannot compute an HMAC, so no stronger authenticator is 
 phone side. It is defended with 120 bits of entropy, HTTPS only, per-pairing-ID rate limiting,
 and rotation.
 
+Being precise about the direction of that risk: `POST /pair` does not prove possession of the
+existing subscription before overwriting it, so someone holding your pairing ID could also point
+it at *their* browser and receive your codes, until your extension next re-registers and takes it
+back. Treat the pairing ID as a secret accordingly: it is shown in the popup and in the QR code,
+and it travels in the `?p=` parameter of the setup URL. If you think it has been seen, rotate.
+
 ## Your controls
 
 **Rotate the pairing ID.** Extension popup → *Rotate pairing code*. This calls `DELETE /pair` on
 the relay to revoke the old ID before minting a new one, so the old ID stops delivering to your
 browser immediately (`rotatePairing` in `background.ts`; `app.delete("/pair")` in
 `relay/src/index.ts`). Revocation matters more than minting: without it, a leaked ID would sit
-in KV for a year and keep reaching you, and rotation would be cosmetic. If revocation fails, the
-popup says so rather than pretending it succeeded. You then paste the new value into the first
-Text action of the Shortcut on your phone; nothing else changes.
+in KV for a year and keep reaching you, and rotation would be cosmetic.
+
+If revocation fails, the popup says so rather than pretending it succeeded. Concretely: the
+response status is checked, so a rate-limited or rejected revocation counts as a failure and not
+merely a dropped connection, and the warning is stored under its own `revokeFailed` key so that
+the successful re-pairing which follows cannot erase it. When you see that warning, the old ID
+may still be live and worth rotating again.
+
+You then paste the new value into the first Text action of the Shortcut on your phone; nothing
+else changes.
 
 **Uninstall.** Removing the extension deletes everything in `chrome.storage`. Deleting the
 Shortcut and its automation on the phone stops any code from being sent. To also clear the

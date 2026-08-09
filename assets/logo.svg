@@ -1,0 +1,29 @@
+<!--
+  The mark: four digits of a verification code, waiting to be filled.
+
+  Geometry is on a 128 grid and deliberately plain — dot diameter 16, gap 9. That ratio
+  survives down to 32px. It does NOT survive to 16px, where a 1.1px gap closes under
+  antialiasing and the four dots render as one bar; `logo-16.svg` is the optically
+  corrected variant for that size. See assets/render-icons.mjs.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"
+     role="img" aria-label="SMS Code Bridge">
+  <defs>
+    <!-- Barely-there vertical gradient. At icon sizes it reads as flat #0a84ff; its only
+         job is to keep the shape from looking like a pasted rectangle at 128. -->
+    <linearGradient id="face" x1="64" y1="6" x2="64" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2E95FF"/>
+      <stop offset="1" stop-color="#0A6FE8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- rx is 24% of the side, matching the iOS app-icon corner Apple uses. -->
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#face)"/>
+
+  <g fill="#fff">
+    <circle cx="26.5" cy="64" r="8"/>
+    <circle cx="51.5" cy="64" r="8"/>
+    <circle cx="76.5" cy="64" r="8"/>
+    <circle cx="101.5" cy="64" r="8"/>
+  </g>
+</svg>

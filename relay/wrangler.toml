@@ -16,6 +16,16 @@ VAPID_SUBJECT = "mailto:ikuria@ucsc.edu"
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put VAPID_PUBLIC_KEY
 
+# Aggregate request outcomes only. See the `track()` comment in src/index.ts for the hard
+# exclusion list: no pairing ID, no IP, no country, no code, no endpoint URL.
+#
+# Do NOT enable [observability] / Workers Logs to get this breakdown instead. Those capture
+# request URLs, and `GET /setup?p=<pairingId>` would then write a live bearer token into a
+# retained log.
+[[analytics_engine_datasets]]
+binding = "OPS"
+dataset = "relay_ops"
+
 # Abuse protection without burning KV writes.
 [[unsafe.bindings]]
 name = "CODE_LIMITER"
