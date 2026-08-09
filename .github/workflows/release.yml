@@ -65,6 +65,10 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          # Strip a leading "v" so the asset is sms-code-bridge-0.1.0-chrome.zip rather
+          # than ...-v0.1.0-..., which would sit alongside the old name as a duplicate
+          # and leave people guessing which one to download.
+          version="${TAG#v}"
           built=$(ls extension/.output/*-chrome.zip | head -1)
-          cp "$built" "sms-code-bridge-${TAG}-chrome.zip"
-          gh release upload "$TAG" "sms-code-bridge-${TAG}-chrome.zip" --clobber
+          cp "$built" "sms-code-bridge-${version}-chrome.zip"
+          gh release upload "$TAG" "sms-code-bridge-${version}-chrome.zip" --clobber
