@@ -225,13 +225,24 @@ app.get("/ops", async (c) => {
     return c.text("Not found", 404);
   }
 
-  const accountId = c.env.CF_ACCOUNT_ID;
-  const apiToken = c.env.CF_API_TOKEN;
+  // Trimmed, because `wrangler secret put` happily stores an empty or whitespace-only
+  // value when a paste does not register — and a secret that exists but is blank looks
+  // identical to a missing one unless it is named.
+  const accountId = c.env.CF_ACCOUNT_ID?.trim();
+  const apiToken = c.env.CF_API_TOKEN?.trim();
   if (!accountId || !apiToken) {
+    const missing = [
+      !accountId && "CF_ACCOUNT_ID",
+      !apiToken && "CF_API_TOKEN",
+    ].filter(Boolean) as string[];
+
     return c.html(
       opsSetup(
-        "Analytics not connected",
-        `<p>The dashboard needs read access to the dataset the relay writes.</p>
+        `Missing: ${missing.join(" and ")}`,
+        `<p>${missing.length === 1 ? "That secret is" : "Those secrets are"} unset or empty.
+         Note that <code>wrangler secret put</code> stores a blank value without complaining
+         if the paste does not register, so an existing secret can still be empty.</p>
+         <p>The dashboard needs read access to the dataset the relay writes.</p>
          <ol>
            <li>Enable Analytics Engine once for the account, then uncomment the
                <code>analytics_engine_datasets</code> block in <code>wrangler.toml</code>.</li>

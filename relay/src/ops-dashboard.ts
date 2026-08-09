@@ -105,7 +105,9 @@ function barChart(series: Array<{ t: string; n: number }>, days: number): string
 
   const max = Math.max(...series.map((d) => d.n), 1);
   const step = plotW / series.length;
-  const barW = Math.max(2, step - 2); // 2px surface gap between bars
+  // Cap the width so a sparse series reads as bars rather than one giant block — with a
+  // single bucket, `step` is the whole plot and the "bar" fills the chart.
+  const barW = Math.min(48, Math.max(2, step - 2)); // 2px surface gap between bars
 
   const bars = series
     .map((d, i) => {
@@ -136,7 +138,7 @@ function barChart(series: Array<{ t: string; n: number }>, days: number): string
       aria-label="Codes delivered over time; peak ${max} per bucket">
     ${grid}${bars}
     <text class="tick" x="${PAD.left}" y="${H - 6}">${esc(first)}</text>
-    <text class="tick" x="${W - PAD.right}" y="${H - 6}" text-anchor="end">${esc(last)}</text>
+    ${first === last ? "" : `<text class="tick" x="${W - PAD.right}" y="${H - 6}" text-anchor="end">${esc(last)}</text>`}
   </svg>`;
 }
 

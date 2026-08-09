@@ -26,7 +26,10 @@ export const test = base.extend<{
     const context = await chromium.launchPersistentContext("", {
       // Extensions do not load in the headless shell; the new headless mode in the full
       // Chromium build does support them.
-      channel: "chrome",
+      // Playwright's own Chromium, not the installed Google Chrome. Extensions do not
+      // load in the headless shell, and `channel: "chrome"` proved unreliable here —
+      // the context closes before the service worker registers.
+      channel: "chromium",
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     await use(context);

@@ -183,7 +183,7 @@ describe("GET /ops", () => {
   it("asks for analytics credentials once the key is right", async () => {
     const res = await SELF.fetch("https://relay.test/ops?key=test-ops-token");
     expect(res.status).toBe(503);
-    expect(await res.text()).toContain("Account Analytics");
+    expect(await res.text()).toContain("CF_API_TOKEN");
   });
 });
 
@@ -449,5 +449,29 @@ describe("GET /setup", () => {
   it("rejects a malformed pairing code", async () => {
     const res = await SELF.fetch("https://relay.test/setup?p=%3Cscript%3E");
     expect(res.status).toBe(400);
+  });
+});
+
+describe("ops chart geometry", () => {
+  const base = {
+    days: 1, totalCodes: 1, delivered: 1,
+    outcomes: [], codeOutcomes: [], latency: null,
+    providers: [], series: [{ t: "2026-08-09 02:00:00", n: 1 }],
+  };
+
+  it("caps bar width so a single bucket is a bar, not a full-width block", () => {
+    // Regression: with one data point the step equals the whole plot, and an uncapped
+    // bar filled the entire chart.
+    const html = opsDashboard(base, "/ops?key=x");
+    const width = Number(/<rect[^>]*width="([\d.]+)"/.exec(html)?.[1] ?? 0);
+    expect(width).toBeGreaterThan(0);
+    expect(width).toBeLessThanOrEqual(48);
+  });
+
+  it("does not print the same axis label twice", () => {
+    const html = opsDashboard(base, "/ops?key=x");
+    // Count only the axis ticks — the timestamp also appears in the bar's hover tooltip.
+    const axisLabels = (html.match(/<text class="tick"[^>]*>[^<]*02:00[^<]*<\/text>/g) ?? []).length;
+    expect(axisLabels).toBe(1);
   });
 });
