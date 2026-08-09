@@ -11,7 +11,8 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "icons": "node assets/render-icons.mjs",
-    "privacy": "node assets/render-privacy.mjs"
+    "privacy": "node assets/render-privacy.mjs",
+    "shortcut:release": "node shortcut/release.mjs"
   },
   "devDependencies": {
     "marked": "^18.0.9",
