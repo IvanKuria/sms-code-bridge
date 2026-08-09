@@ -10,7 +10,7 @@ binding = "PAIRINGS"
 id = "36d66fbcf869486983e1c0a49d300003"
 
 [vars]
-VAPID_SUBJECT = "mailto:ikuria@ucsc.edu"
+VAPID_SUBJECT = "mailto:klukakbusiness@gmail.com"
 
 # VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are secrets:
 #   npx wrangler secret put VAPID_PRIVATE_KEY

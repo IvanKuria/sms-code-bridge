@@ -316,8 +316,9 @@ Web Push requires a server holding VAPID keys.
       time, so a stale `.env` ships the wrong origin and the extension cannot reach the relay.
 - [ ] `manifest.description` and the store's short description agree.
 - [ ] Version bumped from `0.1.0`.
-- [ ] `VAPID_SUBJECT` in `relay/wrangler.toml` set to the publisher's own address, not
-      `ikuria@ucsc.edu`.
+- [ ] `VAPID_SUBJECT` in `relay/wrangler.toml` is a contact that will still work in a
+      year — currently `klukakbusiness@gmail.com`. Push services use it to reach the
+      operator about abuse, so a lapsed address means those warnings bounce.
 - [ ] KV namespace `id` in `wrangler.toml` is a real ID, not the placeholder.
 - [ ] The Shortcut served by `GET /shortcut` was rebuilt from the current
       `shortcut/build-shortcut.mjs`. **Requires macOS** — see `shortcut/README.md` §10. The

@@ -1,6 +1,6 @@
 # Privacy Policy — SMS Code Bridge
 
-Last updated: 2026-08-06
+Last updated: 2026-08-09
 
 This policy describes what the SMS Code Bridge Chrome extension, its relay service, and its
 iPhone Shortcut do with your data. Every claim below is a statement about code in this
@@ -249,4 +249,4 @@ file's git history is the change log.
 
 ## Contact
 
-ikuria@ucsc.edu
+klukakbusiness@gmail.com
