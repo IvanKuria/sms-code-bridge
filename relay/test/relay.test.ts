@@ -438,7 +438,12 @@ describe("GET /setup", () => {
     // shortcuts://import-shortcut only accepts iCloud share links. Given a self-hosted
     // https URL it fails with "The shortcut URL provided was invalid" without ever
     // fetching the file — reproduced on macOS with both encoded and unencoded forms.
-    expect(html).not.toContain("shortcuts://");
+    expect(html).not.toContain("shortcuts://import-shortcut");
+
+    // shortcuts://automations is a different matter: it is a live deep link to the
+    // Automation tab, verified by invoking it, and it removes two steps from the one
+    // part of setup that cannot be automated.
+    expect(html).toContain('href="shortcuts://automations"');
   });
 
   it("rejects a missing pairing code", async () => {

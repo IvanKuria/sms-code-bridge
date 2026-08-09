@@ -192,7 +192,11 @@ function WaitingDiagnosis({ relayAlive }: { relayAlive: boolean | null }) {
           </p>
           <ol className="steps">
             <li>
-              Shortcuts app → <strong>Automation</strong>
+              Shortcuts app → <strong>Automation</strong> tab
+              <br />
+              <span className="muted">
+                (the setup guide can deep-link straight there)
+              </span>
             </li>
             <li>
               Tap <strong>+</strong> → <strong>Message</strong>

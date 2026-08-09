@@ -137,8 +137,17 @@ export function setupPage(pairingId: string, origin: string): string {
           arrives. Without it, no codes will ever reach your computer.
         </div>
 
+        <!--
+          shortcuts://automations is an undocumented but live deep link — verified by
+          invoking it and watching the app open on the Automation tab. It removes the two
+          steps people get lost in (find the app, find the right tab). Everything after
+          that is unavoidably manual: Apple has no mechanism, for anyone, to create a
+          personal automation without these taps.
+        -->
+        <a class="btn" href="shortcuts://automations">Open the Automation tab</a>
+        <p class="hint">Then, on that screen:</p>
+
         <ol class="taps">
-          <li>Open <strong>Shortcuts</strong> → <span class="ui">Automation</span> tab</li>
           <li>Tap <span class="ui">+</span> → <span class="ui">Message</span></li>
           <li>Set <span class="ui">Message Contains</span> to <strong>code</strong></li>
           <li>Leave the sender as <strong>Any Sender</strong></li>
