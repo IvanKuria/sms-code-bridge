@@ -1,0 +1,70 @@
+# Builds the extension and attaches the zip to a release.
+#
+# This exists because the asset went stale twice by hand: once by 17 commits, and again
+# by one. A downloadable build that silently lags the code is worse than none, because
+# people testing it report bugs that were already fixed.
+#
+# WXT_RELAY_URL and WXT_VAPID_PUBLIC_KEY are repository *variables*, not secrets —
+# the relay URL is public and the VAPID public key ships inside the extension anyway.
+name: Release
+
+on:
+  release:
+    types: [published]
+  # So a stale asset can be refreshed without cutting a new release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild and re-upload
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the extension
+        working-directory: extension
+        env:
+          WXT_RELAY_URL: ${{ vars.WXT_RELAY_URL }}
+          WXT_VAPID_PUBLIC_KEY: ${{ vars.WXT_VAPID_PUBLIC_KEY }}
+        run: pnpm zip
+
+      # host_permissions is derived from WXT_RELAY_URL at build time. If the variable is
+      # unset the build still succeeds, but ships a manifest granting a placeholder origin
+      # and the extension cannot reach the relay — a failure that only shows up as a
+      # generic fetch error once installed. Fail here instead.
+      - name: Verify the build points at the configured relay
+        working-directory: extension
+        env:
+          WXT_RELAY_URL: ${{ vars.WXT_RELAY_URL }}
+        run: |
+          set -euo pipefail
+          granted=$(node -p "require('./.output/chrome-mv3/manifest.json').host_permissions[0]")
+          expected="${WXT_RELAY_URL%/}/*"
+          echo "manifest grants: $granted"
+          echo "expected:        $expected"
+          [ "$granted" = "$expected" ]
+
+      - name: Attach the zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          built=$(ls extension/.output/*-chrome.zip | head -1)
+          cp "$built" "sms-code-bridge-${TAG}-chrome.zip"
+          gh release upload "$TAG" "sms-code-bridge-${TAG}-chrome.zip" --clobber
