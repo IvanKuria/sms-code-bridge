@@ -12,7 +12,8 @@
     "build": "pnpm -r build",
     "icons": "node assets/render-icons.mjs",
     "privacy": "node assets/render-privacy.mjs",
-    "shortcut:release": "node shortcut/release.mjs"
+    "shortcut:release": "node shortcut/release.mjs",
+    "ops": "node relay/scripts/ops.mjs"
   },
   "devDependencies": {
     "marked": "^18.0.9",
